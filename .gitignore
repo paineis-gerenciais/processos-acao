@@ -1,0 +1,7 @@
+backups/
+*.backup.json
+*service-account*.json
+.env*
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
