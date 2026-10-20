@@ -11,7 +11,7 @@ export const LIMITES_ITENS = { melhorias: 30, acoes: 100, indicadores: 20, medic
 // Controles C0/DEL e, por R10, os de largura zero e de direção do texto (U+200B-U+200F, U+202A-U+202E, U+2066-U+2069),
 // que permitiriam disfarçar o texto exibido.
 // eslint-disable-next-line no-control-regex
-const RE_CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
+export const RE_CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
 
 /** Comparação de nomes sem maiúsculas, acentos e espaços repetidos. */
 export function normalizarNome(texto) {

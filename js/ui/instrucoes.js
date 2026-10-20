@@ -40,7 +40,11 @@ export function telaInstrucoes() {
       h('h3', null, 'Data da última alteração'),
       h('p', null, 'Cada card mostra quando o plano (ou os indicadores) foi alterado pela última vez. Abrir e fechar o card não altera nenhum dado. O painel não registra quem alterou.'),
       h('h3', null, 'Imprimir'),
-      h('p', null, 'Dentro de um card aberto, o botão Imprimir mostra uma folha com o cabeçalho, a data e a hora. Use Imprimir ou salvar em PDF para a ata do encontro. Em computador compartilhado, não deixe o PDF salvo no equipamento.'),
+      h('p', null, 'Dentro de um card aberto, o botão Imprimir mostra uma folha com os logos, a data e a hora. Na folha, escolha o conteúdo: Plano, Indicadores ou Plano e indicadores. Use Imprimir ou salvar em PDF para a ata do encontro. Em computador compartilhado, não deixe o PDF salvo no equipamento.'),
+      h('h3', null, 'Exportar e importar (JSON)'),
+      h('p', null, 'Exportar todos (JSON), no alto da tela, baixa um arquivo com todos os processos. Exportar este processo, dentro do card aberto, baixa só aquele processo. Itens excluídos não vão para o arquivo.'),
+      h('p', null, 'O arquivo contém nomes de servidores: guarde-o em local de acesso restrito, não o envie fora da equipe e apague-o de computador compartilhado depois de usar.'),
+      h('p', null, 'Importar JSON cria os processos do arquivo como processos novos; processo com o mesmo nome de um que já existe é ignorado. Importar para este processo acrescenta ao processo as melhorias, ações, indicadores e medições que ainda não existem nele. A importação nunca altera nem apaga o que já existe e mostra uma prévia antes de gravar. As datas de registro ficam com a data da importação.'),
       h('h3', null, 'Outros painéis'),
       h('p', null, 'O item Painel de processos, no menu, abre o painel dos processos em outra aba. Este painel continua aberto.')),
 

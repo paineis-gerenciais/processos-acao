@@ -14,12 +14,24 @@ import { ativoPorId } from './estado.js';
 const P = 'Pendente';
 const txt = (v) => (v === null || v === undefined || v === '' ? P : String(v));
 
+/** Logo esquerda no canto esquerdo e logo direita no canto direito da folha (só na impressão; o topo da tela não muda). */
 function cabecalhoDaFolha() {
   return h('div', { class: 'folha-topo' },
-    h('div', { class: 'logos' },
-      h('img', { class: 'logo-img esq', src: 'logo-esquerda.png', alt: 'Logo esquerda' }),
-      h('span', { class: 'sep', 'aria-hidden': 'true' }),
-      h('img', { class: 'logo-img dir', src: 'logo-direita.png', alt: 'Logo direita' })));
+    h('img', { class: 'logo-img esq', src: 'logo-esquerda.png', alt: 'Logo esquerda' }),
+    h('img', { class: 'logo-img dir', src: 'logo-direita.png', alt: 'Logo direita' }));
+}
+
+const CONTEUDOS = [
+  { valor: 'plano', rotulo: 'Plano' },
+  { valor: 'indicadores', rotulo: 'Indicadores' },
+  { valor: 'ambos', rotulo: 'Plano e indicadores' },
+];
+
+function escolhaDeConteudo(tela, pid) {
+  return h('fieldset', { class: 'conteudo-impressao' },
+    h('legend', null, 'Conteúdo da impressão'),
+    ...CONTEUDOS.map((c) => h('label', { class: 'radio' },
+      h('input', { type: 'radio', name: 'conteudo-impressao', value: c.valor, 'data-pid': pid, checked: c.valor === tela }), ` ${c.rotulo}`)));
 }
 
 function planoImpresso(p) {
@@ -91,28 +103,39 @@ function indicadoresImpressos(p) {
   });
 }
 
-export function visaoDeImpressao(tela, processoId) {
+const TITULOS = { plano: 'Plano de implantação', indicadores: 'Indicadores', ambos: 'Plano de implantação e indicadores' };
+
+/** tela: 'plano' | 'indicadores' | 'ambos'. `origem`: tela para onde "Voltar" leva. */
+export function visaoDeImpressao(tela, processoId, origem = tela === 'ambos' ? 'plano' : tela) {
   const p = ativoPorId(processoId);
   if (!p) {
     return h('div', { class: 'impressao', 'data-k': 'impressao' },
-      h('div', { class: 'barra-comandos nao-imprime' }, h('a', { class: 'btn fant', href: `#/${tela}` }, 'Voltar')),
+      h('div', { class: 'barra-comandos nao-imprime' }, h('a', { class: 'btn fant', href: `#/${origem}` }, 'Voltar')),
       h('div', { class: 'aviso-campo info', role: 'status' }, h('p', null, 'Este processo foi excluído ou não existe.')));
   }
   const agora = new Date();
-  const titulo = tela === 'plano' ? `Plano de implantação: «${p.nome}»` : `Indicadores: «${p.nome}»`;
-  const alterado = tela === 'plano' ? p.planoAtualizadoEm : p.indicadoresAtualizadoEm;
-  const rotuloAlteracao = tela === 'plano' ? 'Última alteração do plano' : 'Última alteração dos indicadores';
+  const comPlano = tela !== 'indicadores';
+  const comIndicadores = tela !== 'plano';
+  const alteracoes = [
+    comPlano ? `Última alteração do plano: ${dataHoraBR(p.planoAtualizadoEm) ?? 'nunca alterado'}` : null,
+    comIndicadores ? `Última alteração dos indicadores: ${dataHoraBR(p.indicadoresAtualizadoEm) ?? 'nunca alterado'}` : null,
+  ].filter(Boolean).join(' · ');
+  const secao = (classe, titulo, filhos) => (tela === 'ambos'
+    ? h('section', { class: classe }, h('h2', null, titulo), ...filhos)
+    : filhos);
   return h('div', { class: 'impressao', 'data-k': 'impressao' },
     h('div', { class: 'barra-comandos nao-imprime' },
       h('button', { type: 'button', class: 'btn prim', 'data-acao': 'imprimir-agora' }, 'Imprimir ou salvar em PDF'),
-      h('a', { class: 'btn fant', href: `#/${tela}/${p.id}` }, 'Voltar')),
+      h('a', { class: 'btn fant', href: `#/${origem}/${p.id}` }, 'Voltar'),
+      escolhaDeConteudo(tela, p.id)),
     h('article', { class: 'folha' },
       cabecalhoDaFolha(),
-      h('h1', { id: 'titulo-impressao', tabindex: '-1' }, titulo),
+      h('h1', { id: 'titulo-impressao', tabindex: '-1' }, `${TITULOS[tela]}: «${p.nome}»`),
       h('p', { class: 'meta-impressao' },
-        `Impresso em ${dataHoraBR(agora).replace(' ', ' às ')} · Dados do painel em tempo real · ${rotuloAlteracao}: ${dataHoraBR(alterado) ?? 'nunca alterado'}`,
+        `Impresso em ${dataHoraBR(agora).replace(' ', ' às ')} · Dados do painel em tempo real · ${alteracoes}`,
         estado.ambienteTeste ? ' · Dados fictícios' : ''),
-      ...(tela === 'plano' ? planoImpresso(p) : indicadoresImpressos(p)),
+      comPlano ? secao('parte-plano', 'Plano de implantação', planoImpresso(p)) : null,
+      comIndicadores ? secao('parte-indicadores', 'Indicadores', indicadoresImpressos(p)) : null,
       h('p', { class: 'rodape-impressao' }, `Processo «${p.nome}» · Retrato de ${dataHoraBR(agora)}`)));
 }
 

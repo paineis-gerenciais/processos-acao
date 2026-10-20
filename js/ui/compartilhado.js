@@ -15,18 +15,28 @@ export function par(rotulo, valor, vazio) {
     valor ? h('span', { class: 'par-valor' }, valor) : seloPendente(vazio));
 }
 
-/** Cabeçalho do card: botão de expandir com o nome do processo (aria-expanded) e o conteúdo resumido. */
+/** Cabeçalho do card: nome do processo na primeira linha (botão de expandir, aria-expanded); pessoas e selos abaixo. */
 export function cabecaDoCard(tela, p, aberto, conteudo) {
   const idCorpo = `corpo-${tela}-${idSeguro(p.id)}`;
   return h('div', { class: 'card-cabeca', 'data-acao': 'alternar', 'data-tela': tela, 'data-id': p.id },
-    h('div', { class: 'card-topo' },
-      h('h3', { class: 'card-nome' },
-        h('button', {
-          type: 'button', class: 'btn-expandir', 'aria-expanded': aberto ? 'true' : 'false', 'aria-controls': idCorpo,
-          'data-acao': 'alternar', 'data-tela': tela, 'data-id': p.id,
-        }, h('span', { class: 'nome-texto' }, nomeExibido(p)), ' ', h('span', { class: 'chev' }, aberto ? 'Recolher' : 'Expandir'))),
-      conteudo.topo),
+    h('h3', { class: 'card-nome' },
+      h('button', {
+        type: 'button', class: 'btn-expandir', 'aria-expanded': aberto ? 'true' : 'false', 'aria-controls': idCorpo,
+        'data-acao': 'alternar', 'data-tela': tela, 'data-id': p.id,
+      }, h('span', { class: 'nome-texto' }, nomeExibido(p)), ' ', h('span', { class: 'chev' }, aberto ? 'Recolher' : 'Expandir'))),
+    conteudo.topo.length ? h('div', { class: 'card-pessoas' }, ...conteudo.topo) : null,
     conteudo.selos);
+}
+
+/** Botões do card aberto: imprimir, exportar e importar o processo, e o link para a outra tela. */
+export function botoesDoCard(tela, p) {
+  const outra = tela === 'plano' ? 'indicadores' : 'plano';
+  const sr = (texto) => h('span', { class: 'sr' }, ` ${texto} ${p.nome}`);
+  return h('div', { class: 'linha-botoes botoes-card' },
+    h('button', { type: 'button', class: 'btn fant', 'data-acao': 'imprimir', 'data-tela': tela, 'data-id': p.id }, 'Imprimir', sr(tela === 'plano' ? 'plano de' : 'indicadores de')),
+    h('button', { type: 'button', class: 'btn fant', 'data-acao': 'exportar-processo', 'data-id': p.id }, 'Exportar este processo (JSON)', sr('—')),
+    h('button', { type: 'button', class: 'btn fant', 'data-acao': 'importar-processo', 'data-id': p.id }, 'Importar para este processo', sr('—')),
+    h('a', { href: `#/${outra}/${p.id}` }, tela === 'plano' ? 'Ver indicadores deste processo' : 'Ver plano deste processo'));
 }
 
 export function estaAberto(tela, id) {
@@ -65,11 +75,12 @@ export function novoItem({ chaveForm, rotuloBotao, rotuloCampo, atributos }) {
 export function camposDoProcesso(p, { comEquipe }) {
   const pid = p.id;
   const c = (nome, rotulo, extra = {}) => campo({
-    chave: montarChave(pid, 'processo', null, nome), rotulo, controle: 'texto',
+    chave: montarChave(pid, 'processo', null, nome), rotulo, controle: 'texto', layout: 'linha',
     gravado: textoArmazenado(raw(pid), montarChave(pid, 'processo', null, nome)), ...extra,
   });
+  const pessoa = { ajuda: 'Nome ou função', dica: 'Nome ou função' };
   return comEquipe
-    ? [c('nome', 'Processo'), c('dono', 'Dono do processo', { pendente: !p.dono, ajuda: 'Nome ou função' }), c('embaixador', 'Embaixador', { pendente: !p.embaixador, ajuda: 'Nome ou função' })]
+    ? [c('nome', 'Processo'), c('dono', 'Dono do processo', { pendente: !p.dono, ...pessoa }), c('embaixador', 'Embaixador', { pendente: !p.embaixador, ...pessoa })]
     : [c('nome', 'Processo')];
 }
 

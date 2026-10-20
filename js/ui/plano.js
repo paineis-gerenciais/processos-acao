@@ -5,7 +5,7 @@ import { STATUS, ROTULO_STATUS, acaoAtrasada } from '../dominio/calculos.js';
 import { dataHoraBR } from '../dominio/periodos.js';
 import { seloStatus, seloAtrasada, seloPendente, carimbo } from './selos.js';
 import { campo, montarChave, textoArmazenado } from './campos.js';
-import { cabecaDoCard, estaAberto, excluirNoLugar, novoItem, par, camposDoProcesso, docCru } from './compartilhado.js';
+import { cabecaDoCard, estaAberto, excluirNoLugar, novoItem, par, camposDoProcesso, docCru, botoesDoCard } from './compartilhado.js';
 
 function contagemStatus(p) {
   const n = Object.fromEntries(STATUS.map((s) => [s, 0]));
@@ -34,30 +34,32 @@ function selosDoPlano(p) {
   return lista;
 }
 
-function grupoAcao(pid, a, indice) {
+const COLUNAS_ACAO = ['Ação', 'Responsável', 'Prazo', 'Como se verifica', 'Status', 'Excluir'];
+
+function linhaAcao(pid, a, indice) {
   const doc = docCru(pid);
   const ch = (campoNome) => montarChave(pid, 'acao', a.id, campoNome);
   const gravado = (campoNome) => textoArmazenado(doc, ch(campoNome));
   const idNome = `ra-${idSeguro(a.id)}`;
   const atraso = acaoAtrasada(a, hoje());
   const conf = `acao:${pid}:${a.id}`;
-  const comum = { extraDescricao: idNome };
-  return h('fieldset', { class: 'acao-grupo acao', 'data-k': `acao-${a.id}` },
-    h('legend', null, `Ação ${indice}`),
-    h('span', { id: idNome, class: 'sr' }, `da ação: ${a.acao ?? ''}`),
-    campo({ chave: ch('acao'), rotulo: 'Ação', controle: 'area', gravado: gravado('acao'), ...comum }),
-    campo({ chave: ch('responsavel'), rotulo: 'Responsável', controle: 'texto', gravado: gravado('responsavel'), pendente: !a.responsavel, ajuda: 'Nome ou função', ...comum }),
-    campo({
+  const comum = { extraDescricao: idNome, layout: 'celula' };
+  const td = (classe, rotulo, ...filhos) => h('td', { class: classe, 'data-r': rotulo }, ...filhos);
+  return h('tr', { class: 'acao-linha', 'data-k': `acao-${a.id}` },
+    td('c-acao', 'Ação',
+      h('span', { id: idNome, class: 'sr' }, `Ação ${indice}: ${a.acao ?? ''}`),
+      campo({ chave: ch('acao'), rotulo: 'Ação', controle: 'area', gravado: gravado('acao'), ...comum })),
+    td('c-resp', 'Responsável', campo({ chave: ch('responsavel'), rotulo: 'Responsável', controle: 'texto', gravado: gravado('responsavel'), pendente: !a.responsavel, ajuda: 'Nome ou função', dica: 'Nome ou função', ...comum })),
+    td('c-prazo', 'Prazo', campo({
       chave: ch('prazo'), rotulo: 'Prazo', controle: 'texto', inputmode: 'numeric', gravado: gravado('prazo'), pendente: !a.prazo,
-      ajuda: 'Dia/mês/ano. Ex.: 31/12/2026', rotuloExtra: atraso.atrasada ? seloAtrasada(`Atrasada há ${plural(atraso.dias, 'dia', 'dias')}`) : null, ...comum,
-    }),
-    campo({ chave: ch('comoSeVerifica'), rotulo: 'Como se verifica', controle: 'area', gravado: gravado('comoSeVerifica'), pendente: !a.comoSeVerifica, ...comum }),
-    campo({
+      ajuda: 'Dia/mês/ano. Ex.: 31/12/2026', dica: 'dd/mm/aaaa', rotuloExtra: atraso.atrasada ? seloAtrasada(`Atrasada há ${plural(atraso.dias, 'dia', 'dias')}`) : null, ...comum,
+    })),
+    td('c-como', 'Como se verifica', campo({ chave: ch('comoSeVerifica'), rotulo: 'Como se verifica', controle: 'area', gravado: gravado('comoSeVerifica'), pendente: !a.comoSeVerifica, ...comum })),
+    td('c-status', 'Status', campo({
       chave: ch('status'), rotulo: 'Status', controle: 'lista', gravado: gravado('status'), pendente: !a.status,
-      opcoesLista: STATUS.map((s) => ({ valor: s, rotulo: ROTULO_STATUS[s] })),
-      rotuloExtra: STATUS.includes(a.status) ? seloStatus(a.status) : null, ...comum,
-    }),
-    h('div', { class: 'fim' }, excluirNoLugar({
+      opcoesLista: STATUS.map((s) => ({ valor: s, rotulo: ROTULO_STATUS[s] })), ...comum,
+    })),
+    td('c-excluir', 'Excluir', excluirNoLugar({
       chaveConf: conf, rotuloBotao: 'Excluir ação', pergunta: 'Excluir esta ação?',
       atributos: { 'data-tipo': 'acao', 'data-pid': pid, 'data-id': a.id },
     })));
@@ -68,22 +70,27 @@ function blocoMelhoria(pid, m) {
   const idH = `mh-${idSeguro(m.id)}`;
   const conf = `melhoria:${pid}:${m.id}`;
   const quantas = m.acoes.length;
-  return h('section', { class: 'melhoria', 'data-k': `mel-${m.id}` },
+  return h('section', { class: 'melhoria', 'data-k': `mel-${m.id}`, 'aria-labelledby': idH },
     h('header', null,
       h('h4', { id: idH }, 'Melhoria de origem'),
       quantas ? h('span', { class: 'selo s-nao' }, plural(quantas, 'ação', 'ações')) : seloPendente('sem ação')),
-    campo({ chave: montarChave(pid, 'melhoria', m.id, 'nome'), rotulo: 'Nome da melhoria', controle: 'texto', gravado: textoArmazenado(doc, montarChave(pid, 'melhoria', m.id, 'nome')) }),
-    ...m.acoes.map((a, i) => grupoAcao(pid, a, i + 1)),
-    h('div', { class: 'linha-botoes' },
+    campo({ chave: montarChave(pid, 'melhoria', m.id, 'nome'), rotulo: 'Nome da melhoria', controle: 'texto', layout: 'linha', gravado: textoArmazenado(doc, montarChave(pid, 'melhoria', m.id, 'nome')) }),
+    quantas
+      ? h('table', { class: 'tabela-acoes' },
+        h('caption', { class: 'sr' }, `Ações da melhoria ${m.nome}`),
+        h('thead', null, h('tr', null, ...COLUNAS_ACAO.map((c) => h('th', { scope: 'col', class: c === 'Excluir' ? 'sr-th' : null }, c === 'Excluir' ? h('span', { class: 'sr' }, c) : c)))),
+        h('tbody', null, ...m.acoes.map((a, i) => linhaAcao(pid, a, i + 1))))
+      : null,
+    h('div', { class: 'linha-botoes entre' },
       novoItem({
         chaveForm: `acao:${pid}:${m.id}`, rotuloBotao: 'Adicionar ação', rotuloCampo: 'Descrição da ação',
         atributos: { 'data-tipo': 'acao', 'data-pid': pid, 'data-mid': m.id },
-      })),
-    h('div', { class: 'fim' }, excluirNoLugar({
-      chaveConf: conf, rotuloBotao: 'Excluir melhoria',
-      pergunta: quantas ? `Excluir a melhoria e ${plural(quantas, 'ação', 'ações')}?` : 'Excluir esta melhoria?',
-      atributos: { 'data-tipo': 'melhoria', 'data-pid': pid, 'data-id': m.id },
-    })));
+      }),
+      excluirNoLugar({
+        chaveConf: conf, rotuloBotao: 'Excluir melhoria',
+        pergunta: quantas ? `Excluir a melhoria e ${plural(quantas, 'ação', 'ações')}?` : 'Excluir esta melhoria?',
+        atributos: { 'data-tipo': 'melhoria', 'data-pid': pid, 'data-id': m.id },
+      })));
 }
 
 export function cardPlano(p) {
@@ -102,10 +109,8 @@ export function cardPlano(p) {
   let corpo = null;
   if (aberto) {
     corpo = h('div', { class: 'card-conteudo' },
-      h('div', { class: 'grade g3' }, ...camposDoProcesso(p, { comEquipe: true })),
-      h('p', { class: 'linha-botoes' },
-        h('button', { type: 'button', class: 'btn fant', 'data-acao': 'imprimir', 'data-tela': 'plano', 'data-id': p.id }, 'Imprimir', h('span', { class: 'sr' }, ` plano de ${p.nome}`)),
-        h('a', { href: `#/indicadores/${p.id}` }, 'Ver indicadores deste processo')),
+      h('div', { class: 'ficha-tabela' }, ...camposDoProcesso(p, { comEquipe: true })),
+      botoesDoCard('plano', p),
       h('p', { class: 'small suave' },
         `${plural(p.acoes.length, 'ação', 'ações')} em ${plural(p.melhorias.length, 'melhoria', 'melhorias')}. `,
         dataHoraBR(p.planoAtualizadoEm) ? `Alterado em ${dataHoraBR(p.planoAtualizadoEm)}.` : 'Plano nunca alterado.',

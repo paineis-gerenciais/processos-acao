@@ -143,11 +143,11 @@ export function criarItem(processoId, alvo, dados) {
   return updateDoc(REF(processoId), new FieldPath(...base), item, carimbo(alvo), serverTimestamp(), 'alvo', alvoCompleto(alvo));
 }
 
-/** Cria um processo vazio no formato exato de RG-10. Retorna { id, promessa }. */
-export function criarProcesso(nome) {
+/** Cria um processo vazio no formato exato de RG-10 (dono e embaixador opcionais, usados na importação). Retorna { id, promessa }. */
+export function criarProcesso(nome, { dono = null, embaixador = null } = {}) {
   const ref = doc(collection(banco(), 'processos'));
   const promessa = setDoc(ref, {
-    esquema: 1, nome, dono: null, embaixador: null, origemId: null, criadoEm: serverTimestamp(),
+    esquema: 1, nome, dono, embaixador, origemId: null, criadoEm: serverTimestamp(),
     planoAtualizadoEm: null, indicadoresAtualizadoEm: null, excluido: null,
     melhorias: {}, acoes: {}, indicadores: {}, alvo: null,
   });

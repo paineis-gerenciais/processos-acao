@@ -20,6 +20,7 @@ import {
 } from './avisos.js';
 import { instalarEventos, avaliarReconexao, aoFecharDialogoExclusao, estadoDosBotoesDaLixeira } from './acoes.js';
 import { configurarDialogos, desenharLixeira, lixeiraAberta } from './dialogos.js';
+import { configurarImportacao } from './intercambio.js';
 
 const TELAS = ['instrucoes', 'plano', 'indicadores', 'imprimir'];
 const TITULOS = { instrucoes: 'Instruções', plano: 'Plano de implantação', indicadores: 'Indicadores', imprimir: 'Impressão' };
@@ -38,7 +39,7 @@ function hora() {
 export function lerRota() {
   const partes = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map((p) => decodeURIComponent(p));
   const tela = TELAS.includes(partes[0]) ? partes[0] : 'plano';
-  if (tela === 'imprimir') return { tela, alvo: ['plano', 'indicadores'].includes(partes[1]) ? partes[1] : 'plano', id: partes[2] ?? null, ancora: null };
+  if (tela === 'imprimir') return { tela, alvo: ['plano', 'indicadores', 'ambos'].includes(partes[1]) ? partes[1] : 'plano', id: partes[2] ?? null, ancora: null };
   if (tela === 'instrucoes') return { tela, id: null, ancora: partes[1] ?? null };
   return { tela, id: partes[1] ?? null, ancora: null };
 }
@@ -61,7 +62,8 @@ function aoMudarRota() {
     estado.abertos.add(chaveAberto(nova.tela, nova.id));
     estado.focoPendente = { seletor: `#card-${nova.tela}-${idSeguro(nova.id)} .btn-expandir`, ate: Date.now() + 3000, rolar: true };
   } else if (nova.tela === 'imprimir') {
-    estado.focoPendente = { seletor: '#titulo-impressao', ate: Date.now() + 3000 };
+    // Trocar o conteúdo da impressão (mesmo processo) mantém o foco na escolha.
+    if (!(anterior?.tela === 'imprimir' && anterior.id === nova.id)) estado.focoPendente = { seletor: '#titulo-impressao', ate: Date.now() + 3000 };
   } else if (!anterior || anterior.tela !== nova.tela) {
     estado.focoPendente = { seletor: '#h1-tela', ate: Date.now() + 2000 };
   }
@@ -126,6 +128,8 @@ function acoesDaTela(tela) {
         : h('button', { type: 'button', class: 'btn prim', 'data-acao': 'processo-novo-abrir' }, 'Adicionar processo'),
       h('button', { type: 'button', class: 'btn fant', 'data-acao': 'expandir-todos' }, 'Expandir todos'),
       h('button', { type: 'button', class: 'btn fant', 'data-acao': 'recolher-todos' }, 'Recolher todos'),
+      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'exportar-todos' }, 'Exportar todos (JSON)'),
+      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'importar-novos' }, 'Importar JSON'),
       h('div', { class: 'campo busca' },
         h('label', { for: 'busca' }, 'Buscar processo'),
         h('input', { id: 'busca', type: 'search', value: estado.busca, 'data-controlado': true, autocomplete: 'off' })),
@@ -196,7 +200,7 @@ function construirTela() {
   } else if (rota.tela === 'imprimir') {
     if (estado.carregando) raiz.append(h('p', { role: 'status', 'data-k': 'prep' }, 'Preparando a impressão…'));
     else if (estado.erroLeitura) raiz.append(blocoDeErro());
-    else raiz.append(visaoDeImpressao(rota.alvo, rota.id));
+    else raiz.append(visaoDeImpressao(rota.alvo, rota.id, estado.origemImpressao ?? undefined));
   } else {
     for (const f of telaDeProcessos(rota.tela)) if (f) raiz.append(f);
   }
@@ -417,6 +421,7 @@ export function iniciarApp(dados, info) {
   instalarEventos();
   configurarLogos();
   configurarDialogos({ aoFecharExclusao: aoFecharDialogoExclusao });
+  configurarImportacao();
   window.addEventListener('hashchange', aoMudarRota);
   window.addEventListener('offline', () => {
     estado.navegadorOffline = true;

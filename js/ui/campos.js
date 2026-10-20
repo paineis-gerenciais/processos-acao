@@ -113,7 +113,10 @@ export function valorExibido(chave, textoGravado) {
 
 /**
  * opcoes: { chave, rotulo, controle: 'texto' | 'area' | 'lista', gravado (texto), opcoesLista: [{valor, rotulo}],
- *   ajuda, pendente, bloqueio (razão), extraDescricao (id), inputmode, classe, sufixo }
+ *   ajuda, pendente, bloqueio (razão), extraDescricao (id), inputmode, classe, sufixo,
+ *   layout: 'linha' (rótulo à esquerda, formato de tabela) | 'celula' (célula de tabela: rótulo só para leitor de tela),
+ *   dica (placeholder) }
+ * Nos dois layouts compactos a ajuda só aparece com o foco no campo; continua ligada por aria-describedby.
  */
 export function campo(o) {
   const id = `f-${idSeguro(o.chave)}`;
@@ -127,9 +130,11 @@ export function campo(o) {
     'aria-invalid': e?.tipo === 'recusado' ? 'true' : null,
     disabled: o.bloqueio ? true : null,
   };
+  const compacto = o.layout === 'linha' || o.layout === 'celula';
+  if (o.dica && o.controle !== 'lista') comuns.placeholder = o.dica;
   let controle;
   if (o.controle === 'area') {
-    controle = h('textarea', { ...comuns, rows: 3 }, valor);
+    controle = h('textarea', { ...comuns, rows: compacto ? 2 : 3 }, valor);
   } else if (o.controle === 'lista') {
     controle = h('select', comuns,
       h('option', { value: '', selected: valor === '' }, 'Selecione'),
@@ -138,11 +143,14 @@ export function campo(o) {
     controle = h('input', { ...comuns, type: 'text', value: valor, inputmode: o.inputmode ?? null, autocomplete: 'off' });
   }
   const { linha, extra } = linhaDeEstado(o.chave, idEstado);
-  const rotulo = h('label', { for: id }, o.rotulo, o.sufixo ? ` (${o.sufixo})` : '', o.opcional ? ' (opcional)' : '', ' ',
-    o.pendente ? seloPendente() : null, o.rotuloExtra ? [' ', o.rotuloExtra] : null);
-  return h('div', { class: `campo ${o.classe ?? ''}`.trim(), 'data-k': `c-${id}` },
+  const celula = o.layout === 'celula';
+  const rotulo = h('label', { for: id, class: celula ? 'sr' : null }, o.rotulo, o.sufixo ? ` (${o.sufixo})` : '', o.opcional ? ' (opcional)' : '', ' ',
+    o.pendente ? seloPendente() : null, o.rotuloExtra && !celula ? [' ', o.rotuloExtra] : null);
+  const classes = ['campo', compacto ? `compacto ${o.layout}` : null, compacto && o.pendente ? 'pendente' : null, o.classe].filter(Boolean).join(' ');
+  return h('div', { class: classes, 'data-k': `c-${id}` },
     rotulo,
     controle,
+    celula && o.rotuloExtra ? h('div', { class: 'extra-celula' }, o.rotuloExtra) : null,
     o.ajuda ? h('div', { class: 'ajuda', id: idAjuda }, o.ajuda) : null,
     o.bloqueio ? h('div', { class: 'ajuda bloqueio' }, o.bloqueio) : null,
     linha,

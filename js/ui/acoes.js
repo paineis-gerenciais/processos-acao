@@ -14,6 +14,7 @@ import { ocupacao, PRAZO_DESFAZER_DIAS, excluidosRecentes } from '../dominio/lix
 import { horaSaoPaulo } from '../dominio/periodos.js';
 import { calcularValor, analisarNumero, formatarNumero } from '../dominio/calculos.js';
 import { abrirDialogoExcluir, abrirLixeira } from './dialogos.js';
+import { exportarTodos, exportarProcesso, escolherArquivo } from './intercambio.js';
 
 const MS_DIA = 86400000;
 
@@ -556,7 +557,14 @@ export function tratarClique(e) {
     }
     case 'expandir-todos': expandirTodos(estado.rota.tela, true); break;
     case 'recolher-todos': expandirTodos(estado.rota.tela, false); break;
-    case 'imprimir': window.location.hash = `#/imprimir/${alvo.dataset.tela}/${alvo.dataset.id}`; break;
+    case 'imprimir':
+      estado.origemImpressao = alvo.dataset.tela;
+      window.location.hash = `#/imprimir/${alvo.dataset.tela}/${alvo.dataset.id}`;
+      break;
+    case 'exportar-todos': exportarTodos(); break;
+    case 'exportar-processo': exportarProcesso(alvo.dataset.id); break;
+    case 'importar-novos': escolherArquivo('novos', null, alvo); break;
+    case 'importar-processo': escolherArquivo('acrescimo', alvo.dataset.id, alvo); break;
     case 'imprimir-agora': window.print(); break;
     case 'excluir-processo': pedirExclusaoDeProcesso(alvo.dataset.id, alvo); break;
     case 'confirmar-abrir':
@@ -666,6 +674,10 @@ export function instalarEventos() {
   raiz.addEventListener('change', (e) => {
     const el = e.target;
     if (el.dataset?.chave && el.matches('select')) confirmarCampoDoElemento(el);
+    if (el.name === 'conteudo-impressao') {
+      window.location.hash = `#/imprimir/${el.value}/${el.dataset.pid}`;
+      focar(`input[name="conteudo-impressao"][value="${el.value}"]`);
+    }
     const fs = el.closest?.('fieldset.registro');
     if (fs && el.dataset?.medicao) atualizarFormularioDeMedicao(fs);
   });
