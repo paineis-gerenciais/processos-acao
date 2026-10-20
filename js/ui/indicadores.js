@@ -10,7 +10,7 @@ import { avisosIndicador } from '../dominio/validacao.js';
 import { analiseIndicador } from '../dominio/metricas.js';
 import { seloSituacao, seloAtrasada, seloPendente, carimbo } from './selos.js';
 import { campo, montarChave, textoArmazenado } from './campos.js';
-import { cabecaDoCard, estaAberto, excluirNoLugar, novoItem, camposDoProcesso, docCru } from './compartilhado.js';
+import { cabecaDoCard, estaAberto, excluirNoLugar, novoItem, camposDoProcesso, docCru, botoesDoCard } from './compartilhado.js';
 import { rodapeDoCard } from './plano.js';
 import { graficoDaSerie } from './grafico.js';
 
@@ -62,31 +62,32 @@ function fichaDoIndicador(pid, i) {
   const trava = i.medicoes.length > 0;
   const unidade = i.unidade ? ROTULO_UNIDADE[i.unidade] : null;
   const pend = (n) => i[n] === null || i[n] === undefined || i[n] === '';
-  return h('div', { class: 'grade g2 ficha' },
-    campo({ chave: ch('nome'), rotulo: 'Nome do indicador', controle: 'texto', gravado: g('nome'), classe: 'largo' }),
-    campo({ chave: ch('formula'), rotulo: 'Fórmula', controle: 'area', gravado: g('formula'), pendente: pend('formula'), ajuda: 'Texto livre; o painel não calcula a fórmula.', classe: 'largo' }),
-    campo({ chave: ch('oQueMede'), rotulo: 'O que mede', controle: 'area', gravado: g('oQueMede'), pendente: pend('oQueMede'), classe: 'largo' }),
-    campo({ chave: ch('responsavel'), rotulo: 'Responsável pela medição', controle: 'texto', gravado: g('responsavel'), pendente: pend('responsavel'), ajuda: 'Nome ou função' }),
-    campo({ chave: ch('fonte'), rotulo: 'Fonte', controle: 'texto', gravado: g('fonte'), pendente: pend('fonte'), ajuda: 'De onde sai o dado' }),
+  const L = { layout: 'linha' };
+  return h('div', { class: 'ficha ficha-tabela' },
+    campo({ ...L, chave: ch('nome'), rotulo: 'Nome do indicador', controle: 'texto', gravado: g('nome'), classe: 'largo' }),
+    campo({ ...L, chave: ch('formula'), rotulo: 'Fórmula', controle: 'area', gravado: g('formula'), pendente: pend('formula'), ajuda: 'Texto livre; o painel não calcula a fórmula.', classe: 'largo' }),
+    campo({ ...L, chave: ch('oQueMede'), rotulo: 'O que mede', controle: 'area', gravado: g('oQueMede'), pendente: pend('oQueMede'), classe: 'largo' }),
+    campo({ ...L, chave: ch('responsavel'), rotulo: 'Responsável pela medição', controle: 'texto', gravado: g('responsavel'), pendente: pend('responsavel'), ajuda: 'Nome ou função', dica: 'Nome ou função' }),
+    campo({ ...L, chave: ch('fonte'), rotulo: 'Fonte', controle: 'texto', gravado: g('fonte'), pendente: pend('fonte'), ajuda: 'De onde sai o dado', dica: 'De onde sai o dado' }),
     campo({
-      chave: ch('polaridade'), rotulo: 'Polaridade', controle: 'lista', gravado: g('polaridade'), pendente: pend('polaridade'),
+      ...L, chave: ch('polaridade'), rotulo: 'Polaridade', controle: 'lista', gravado: g('polaridade'), pendente: pend('polaridade'),
       opcoesLista: POLARIDADES.map((v) => ({ valor: v, rotulo: ROTULO_POLARIDADE[v] })), ajuda: 'Maior é melhor ou menor é melhor?',
     }),
     campo({
-      chave: ch('frequencia'), rotulo: 'Frequência', controle: 'lista', gravado: g('frequencia'), pendente: pend('frequencia'),
+      ...L, chave: ch('frequencia'), rotulo: 'Frequência', controle: 'lista', gravado: g('frequencia'), pendente: pend('frequencia'),
       opcoesLista: Object.keys(FREQUENCIAS).map((v) => ({ valor: v, rotulo: FREQUENCIAS[v].rotulo })),
       ajuda: 'Mensal costuma bastar; trimestral é o limite.',
       bloqueio: trava ? 'Não é possível mudar a frequência enquanto houver medições. Exclua as medições antes.' : null,
     }),
     campo({
-      chave: ch('unidade'), rotulo: 'Unidade', controle: 'lista', gravado: g('unidade'), pendente: pend('unidade'),
+      ...L, chave: ch('unidade'), rotulo: 'Unidade', controle: 'lista', gravado: g('unidade'), pendente: pend('unidade'),
       opcoesLista: UNIDADES.map((v) => ({ valor: v, rotulo: ROTULO_UNIDADE[v] })), ajuda: 'Em % o painel oferece numerador e denominador.',
       bloqueio: trava ? 'Não é possível mudar a unidade enquanto houver medições. Exclua as medições antes.' : null,
     }),
-    campo({ chave: ch('linhaBase'), rotulo: 'Linha de base', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('linhaBase'), pendente: pend('linhaBase'), ajuda: 'Valor de hoje. Sem ele não dá para saber se melhorou. Use vírgula: 62,5' }),
-    campo({ chave: ch('linhaBaseReferencia'), rotulo: 'Referência da linha de base', controle: 'texto', inputmode: 'numeric', gravado: g('linhaBaseReferencia'), pendente: pend('linhaBaseReferencia'), ajuda: 'Último dia coberto pelo valor de hoje. Ex.: 31/12/2026' }),
-    campo({ chave: ch('meta'), rotulo: 'Meta', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('meta'), pendente: pend('meta'), ajuda: 'Valor que se quer alcançar. Use vírgula.' }),
-    campo({ chave: ch('prazoMeta'), rotulo: 'Prazo da meta', opcional: true, controle: 'texto', inputmode: 'numeric', gravado: g('prazoMeta'), ajuda: 'Dia/mês/ano. Informativo.' }));
+    campo({ ...L, chave: ch('linhaBase'), rotulo: 'Linha de base', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('linhaBase'), pendente: pend('linhaBase'), ajuda: 'Valor de hoje. Sem ele não dá para saber se melhorou. Use vírgula: 62,5', dica: 'Ex.: 62,5' }),
+    campo({ ...L, chave: ch('linhaBaseReferencia'), rotulo: 'Referência da linha de base', controle: 'texto', inputmode: 'numeric', gravado: g('linhaBaseReferencia'), pendente: pend('linhaBaseReferencia'), ajuda: 'Último dia coberto pelo valor de hoje. Ex.: 31/12/2026', dica: 'dd/mm/aaaa' }),
+    campo({ ...L, chave: ch('meta'), rotulo: 'Meta', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('meta'), pendente: pend('meta'), ajuda: 'Valor que se quer alcançar. Use vírgula.', dica: 'Ex.: 80' }),
+    campo({ ...L, chave: ch('prazoMeta'), rotulo: 'Prazo da meta', opcional: true, controle: 'texto', inputmode: 'numeric', gravado: g('prazoMeta'), ajuda: 'Dia/mês/ano. Informativo.', dica: 'dd/mm/aaaa' }));
 }
 
 function celula(rotulo, ...filhos) {
@@ -243,10 +244,8 @@ export function cardIndicadores(p) {
   let corpo = null;
   if (aberto) {
     corpo = h('div', { class: 'card-conteudo' },
-      h('div', { class: 'grade g3' }, ...camposDoProcesso(p, { comEquipe: false })),
-      h('p', { class: 'linha-botoes' },
-        h('button', { type: 'button', class: 'btn fant', 'data-acao': 'imprimir', 'data-tela': 'indicadores', 'data-id': p.id }, 'Imprimir', h('span', { class: 'sr' }, ` indicadores de ${p.nome}`)),
-        h('a', { href: `#/plano/${p.id}` }, 'Ver plano deste processo')),
+      h('div', { class: 'ficha-tabela' }, ...camposDoProcesso(p, { comEquipe: false })),
+      botoesDoCard('indicadores', p),
       p.indicadores.length >= 2
         ? h('nav', { 'aria-label': `Indicadores de ${p.nome}`, class: 'saltos' },
           ...p.indicadores.map((i) => h('button', { type: 'button', class: 'btn fant btn-pequeno', 'data-acao': 'ir-indicador', 'data-id': i.id }, `Ir para o indicador: ${i.nome}`)))

@@ -153,26 +153,73 @@ select:disabled,input:disabled{color:var(--ink-soft);background:var(--neutral-so
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
 .card-cabeca{padding:var(--space-3);display:grid;gap:var(--space-2);border-radius:var(--radius-lg);min-height:72px;cursor:pointer}
 .card-cabeca:hover{background:var(--paper)}
-.card-topo{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);align-items:center}
-.card-nome{flex:1 1 220px;min-width:0}
+.card-nome{min-width:0}
+.card-pessoas{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-5)}
 .btn-expandir{font:inherit;color:var(--ink);background:none;border:0;padding:0;margin:0;text-align:left;cursor:pointer;min-height:var(--touch);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);width:100%}
 .btn-expandir .nome-texto{font-family:var(--font-display);font-weight:600}
 .chev{font:600 .875rem/1.25rem var(--font-body);color:var(--accent)}
-.par{display:flex;flex-direction:column;min-width:0}
-.par-rotulo{font-size:.75rem;line-height:1rem;color:var(--ink-soft)}
+.par{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);min-width:0}
+.par-rotulo{font-size:.875rem;line-height:1.25rem;color:var(--ink-soft)}
+.par-rotulo::after{content:":"}
 .linha-selos{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
 .link-card{font-size:.875rem;min-height:var(--touch);display:inline-flex;align-items:center}
 .card-corpo{padding:0 var(--space-3) var(--space-3);border-top:1px solid var(--border)}
 .card-corpo[hidden]{display:none}
 .card-conteudo{padding-top:var(--space-3)}
 @media(min-width:860px){.card-corpo{padding:0 var(--space-4) var(--space-4)}.card-cabeca{padding:var(--space-3) var(--space-4)}}
-@media(min-width:1280px){
-  .card-plano .card-cabeca{grid-template-columns:minmax(220px,1.4fr) 1fr 1fr 2.4fr;align-items:center}
-  .card-ind .card-cabeca{grid-template-columns:minmax(220px,1.4fr) 3fr;align-items:center}
-  .card-cabeca .card-topo{display:contents}
+
+/* Campos em formato de tabela (issue #5): rótulo à esquerda; ajuda só com o foco no campo */
+.ficha-tabela{display:grid;grid-template-columns:minmax(0,1fr);border-top:1px solid var(--border)}
+.ficha-tabela>.campo{border-bottom:1px solid var(--border);padding:var(--space-1) 0}
+.campo.compacto .ajuda{display:none;margin-top:2px}
+.campo.compacto:focus-within .ajuda,.campo.compacto .ajuda.bloqueio{display:block}
+.campo.compacto .estado{min-height:0;margin-top:0}
+.campo.compacto .estado:not(:empty){margin-top:2px}
+.campo.compacto textarea{min-height:var(--touch)}
+.campo.compacto.pendente :is(input,textarea,select):not(:focus){border-color:var(--warn-dark);background:var(--warn-soft)}
+.campo.compacto input::placeholder,.campo.compacto textarea::placeholder{color:var(--ink-soft);opacity:1}
+@media(min-width:600px){
+  .campo.linha{display:grid;grid-template-columns:11rem minmax(0,1fr);column-gap:var(--space-3);align-items:start}
+  .campo.linha>label{grid-column:1;grid-row:1/span 6;margin:0;padding-top:10px}
+  .campo.linha>:not(label){grid-column:2}
 }
-.melhoria{margin-top:var(--space-4)}
-.melhoria>header{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;margin-bottom:var(--space-2)}
+@media(min-width:860px){
+  .ficha-tabela.ficha{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--space-5)}
+  .ficha-tabela.ficha .largo{grid-column:1/-1}
+}
+@media(min-width:1280px){.duas .ficha-tabela.ficha{grid-template-columns:minmax(0,1fr)}}
+.extra-celula{margin-top:var(--space-1)}
+.botoes-card{margin:var(--space-2) 0}
+.linha-botoes.entre{justify-content:space-between}
+
+/* Ações de cada melhoria em tabela; em telas estreitas cada linha vira um bloco em duas colunas */
+.tabela-acoes{width:100%;border-collapse:collapse;margin:var(--space-2) 0 0}
+.tabela-acoes th{font:600 .75rem/1rem var(--font-body);color:var(--ink-soft);text-align:left;padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--border-strong)}
+.tabela-acoes td{padding:var(--space-2) var(--space-1);vertical-align:top;border-bottom:1px solid var(--border)}
+.tabela-acoes td:first-child{padding-left:0}.tabela-acoes td:last-child{padding-right:0}
+.tabela-acoes .confirma{padding:var(--space-1) var(--space-2)}
+@media(min-width:1180px){
+  .tabela-acoes{table-layout:fixed}
+  .tabela-acoes th:nth-child(1){width:27%}.tabela-acoes th:nth-child(2){width:17%}.tabela-acoes th:nth-child(3){width:7.25rem}
+  .tabela-acoes th:nth-child(4){width:22%}.tabela-acoes th:nth-child(5){width:9.5rem}.tabela-acoes th:nth-child(6){width:6.5rem}
+  .tabela-acoes :is(input,textarea,select){font-size:.875rem;line-height:1.25rem;padding:var(--space-2) 6px}
+  .tabela-acoes select{padding-right:2px}
+  .tabela-acoes .c-excluir .btn{white-space:normal;min-height:var(--touch);line-height:1rem;text-align:center}
+}
+@media(max-width:1179px){
+  .tabela-acoes,.tabela-acoes tbody{display:block}
+  .tabela-acoes thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .tabela-acoes tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2) var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--border)}
+  .tabela-acoes td,.tabela-acoes td:first-child,.tabela-acoes td:last-child{display:block;padding:0;border:0;min-width:0}
+  .tabela-acoes td::before{content:attr(data-r);content:attr(data-r) / "";display:block;font:600 .75rem/1rem var(--font-body);color:var(--ink-soft);margin-bottom:2px}
+  .tabela-acoes td.c-excluir::before{content:none}
+  .tabela-acoes td.c-acao,.tabela-acoes td.c-como{grid-column:1/-1}
+  .tabela-acoes td.c-excluir{align-self:end;justify-self:end}
+}
+@media(max-width:599px){.tabela-acoes tr{grid-template-columns:minmax(0,1fr)}.tabela-acoes td.c-excluir{justify-self:start}}
+.melhoria{margin-top:var(--space-4);padding-top:var(--space-3);border-top:2px solid var(--accent-soft)}
+.melhoria>header{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;margin-bottom:var(--space-1)}
+.melhoria>.linha-botoes{margin:var(--space-2) 0 0}
 fieldset{min-width:0}
 fieldset.acao-grupo{border:1px solid var(--border);border-radius:var(--radius-md);margin:var(--space-3) 0;padding:var(--space-3);display:grid;gap:var(--space-3)}
 fieldset.acao-grupo legend{padding:0 var(--space-1);font-size:.75rem;color:var(--ink-soft)}
@@ -242,6 +289,10 @@ fieldset.registro legend{font:600 1rem/1.5rem var(--font-display);padding:0 var(
 .dialogo::backdrop{background:var(--backdrop)}
 .dialogo h2{margin-bottom:var(--space-2)}
 .dialogo .botoes{margin-top:var(--space-3);justify-content:flex-end}
+.dialogo ul{margin:0 0 var(--space-2);padding-left:var(--space-4)}
+.dialogo progress{width:100%;height:12px;accent-color:var(--accent)}
+.ignorados{margin:var(--space-2) 0;font-size:.875rem;line-height:1.25rem}
+.ignorados summary{cursor:pointer;min-height:var(--touch);display:flex;align-items:center;font-weight:600}
 .lista-lixeira{list-style:none;margin:0;padding:0;display:grid;gap:var(--space-3)}
 .lista-lixeira li{display:flex;gap:var(--space-3);justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--border);padding-bottom:var(--space-3);flex-wrap:wrap}
 
@@ -261,7 +312,12 @@ fieldset.registro legend{font:600 1rem/1.5rem var(--font-display);padding:0 var(
 .impressao{max-width:900px;margin:0 auto}
 .barra-comandos{display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap}
 .folha{background:var(--surface);color:#000;border:1px solid var(--border);box-shadow:var(--shadow-overlay);padding:var(--space-4);overflow-wrap:anywhere}
-.folha-topo .logos{border:0;padding:0}
+.folha-topo{display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);padding-bottom:var(--space-2);border-bottom:1px solid var(--border)}
+.folha-topo .logo-img,.folha-topo .logo-subst{height:44px}
+.folha-topo .logo-img.esq,.folha-topo .logo-subst.esq{max-width:270px}.folha-topo .logo-img.dir,.folha-topo .logo-subst.dir{max-width:185px}
+.folha h2{font-size:1.25rem;margin:var(--space-5) 0 var(--space-2);padding-bottom:var(--space-1);border-bottom:2px solid var(--line)}
+.conteudo-impressao{border:0;margin:0 0 0 auto;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--space-3)}
+.conteudo-impressao legend{float:left;font:600 .875rem/1.25rem var(--font-body);margin-right:var(--space-2);padding:0}
 .folha h1{font-size:1.5rem;margin:var(--space-3) 0 var(--space-1)}
 .folha h1:focus{outline:none}
 .folha h3{margin:var(--space-4) 0 var(--space-2)}
@@ -289,6 +345,8 @@ fieldset.registro legend{font:600 1rem/1.5rem var(--font-display);padding:0 var(
   .tabela-impressa tr,.grafico-impressao,.melhoria-impressa h3{break-inside:avoid}
   .melhoria-impressa h3,.indicador-impresso h3{break-after:avoid}
   .indicador-impresso{break-inside:auto}
+  .parte-plano+.parte-indicadores{break-before:page}
+  .folha h2{break-after:avoid}
   .grafico{border:0}
   .g-eixo,.g-grade,.g-base,.g-meta,.g-serie{stroke:#000}
   .g-ponto{fill:#000}

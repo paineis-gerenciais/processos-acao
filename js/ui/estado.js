@@ -38,6 +38,7 @@ export const estado = {
   focoPendente: null,          // seletor a focar após o próximo desenho
   listaExcluidosAberta: false,
   metricasAbertas: new Set(),
+  origemImpressao: null,       // tela de onde a impressão foi aberta (volta para ela)
   anuncio: '',
   erroGlobal: null,
   criadosPorMim: new Set(),
