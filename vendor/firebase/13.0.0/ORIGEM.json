@@ -1,0 +1,6 @@
+{
+  "pacote": "firebase",
+  "versao": "13.0.0",
+  "integridadeDoTarball": "sha512-4cChZajVtuOijT/t7Vw1GZRTuohCxw+aoc8DAwhF+CSbS+zhqHE+i5PzEVttIySw7oKerBDRZRyDt4FynrWecg==",
+  "alteracao": "firebase-firestore.js: from\"https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js\" -> from\"./firebase-app.js\" (única ocorrência); firebase-app.js sem alteração"
+}

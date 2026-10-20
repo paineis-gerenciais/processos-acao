@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://firestore.googleapis.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plano de implantação e indicadores dos processos</title>
+<link rel="stylesheet" href="css/estilo.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body data-modo="normal">
+<a class="skip" href="#conteudo" data-acao="pular">Ir para o conteúdo</a>
+<header class="topo">
+  <p class="nome-painel">Plano de implantação e indicadores dos processos</p>
+  <div class="logos">
+    <img class="logo-img esq" src="logo-esquerda.png" alt="Logo esquerda">
+    <span class="sep" aria-hidden="true"></span>
+    <img class="logo-img dir" src="logo-direita.png" alt="Logo direita">
+  </div>
+  <button type="button" id="btn-menu" class="btn-menu" aria-expanded="false" aria-controls="menu-lista"><span aria-hidden="true">&#9776;</span> Menu</button>
+</header>
+<div class="corpo">
+  <nav id="menu" class="menu" aria-label="Menu principal">
+    <div id="menu-lista" class="menu-lista" hidden>
+      <p class="menu-nome">Plano de implantação e indicadores dos processos</p>
+      <a href="#/instrucoes" data-rota="instrucoes">Instruções</a>
+      <a href="#/plano" data-rota="plano">Plano de implantação</a>
+      <a href="#/indicadores" data-rota="indicadores">Indicadores</a>
+      <p class="fora">Fora deste painel</p>
+      <a href="https://paineis-gerenciais.github.io/processos/" target="_blank" rel="noopener noreferrer">Painel de processos <span aria-hidden="true">&#8599;</span><span class="sr"> (abre em outra aba)</span></a>
+      <p id="nota-conexao" class="nota-menu"></p>
+    </div>
+  </nav>
+  <main id="conteudo" class="principal" tabindex="-1">
+    <div id="tela"></div>
+  </main>
+</div>
+<div id="barra-desfazer" class="area-desfazer"></div>
+<div id="anuncio" class="sr" role="status" aria-live="polite"></div>
+<dialog id="dlg-excluir" class="dialogo" role="alertdialog"></dialog>
+<dialog id="dlg-lixeira" class="dialogo largo" aria-labelledby="lixeira-titulo">
+  <h2 id="lixeira-titulo">Excluídos recentes</h2>
+  <p class="ajuda">Itens excluídos podem ser restaurados por 35 dias. Depois disso são apagados de vez.</p>
+  <div id="lixeira-corpo"></div>
+  <div class="botoes"><button type="button" class="btn fant" data-acao="fechar-lixeira">Fechar</button></div>
+</dialog>
+</body>
+</html>
