@@ -1,6 +1,7 @@
 // Eventos (por delegação) e operações do usuário: edição por campo, adicionar, excluir, desfazer, medições.
 import {
   estado, atualizar, hoje, procPorId, ativoPorId, listaAtiva, outrosNomesDeProcesso, anunciar, chaveAberto,
+  filtrarPorBusca, filtrarPorEstado, processoTem,
 } from './estado.js';
 import {
   lerChave, montarChave, textoArmazenado, definicao,
@@ -255,11 +256,24 @@ function cancelarNovo(chaveForm) {
 
 function confirmarNovo(botao) {
   const chaveForm = botao.dataset.chave;
-  const { tipo, pid, mid } = botao.dataset;
   const entrada = document.querySelector(`[data-novo="${chaveForm}"]`);
+  if (entrada) criarNovo(entrada, botao.dataset, false);
+}
+
+/**
+ * Cria melhoria, ação ou indicador a partir do texto de um campo. `daLinha` = campo da linha em branco da tabela:
+ * sair do campo com texto cria (uma gravação, um item); sem texto não faz nada.
+ */
+function criarNovo(entrada, dados0, daLinha) {
+  const chaveForm = entrada.dataset.novo;
+  const { tipo, pid, mid } = dados0;
+  if (daLinha && entrada.value.trim() === '') {
+    if (estado.formsNovo.get(chaveForm)?.erro) { estado.formsNovo.delete(chaveForm); atualizar(); }
+    return;
+  }
   const doc = procPorId(pid);
   const a = ativoPorId(pid);
-  if (!entrada || !doc || !a) return;
+  if (!doc || !a) return;
   const entidade = tipo;
   const campoNome = tipo === 'acao' ? 'acao' : 'nome';
   const ctx = { hoje: hoje(), outrosNomes: tipo === 'melhoria' ? a.melhorias.map((m) => m.nome) : [] };
@@ -284,21 +298,24 @@ function confirmarNovo(botao) {
     };
   }
   estado.formsNovo.delete(chaveForm);
+  if (daLinha) entrada.value = ''; // a linha em branco continua no lugar e não pode guardar o texto já gravado
   const promessa = estado.dados.criarItem(pid, { tipo, id, periodo: null }, dados);
   anunciar(`${{ melhoria: 'Melhoria', acao: 'Ação', indicador: 'Indicador' }[tipo]} adicionado.`);
-  focar(`[data-chave="${montarChave(pid, tipo, id, campoNome)}"]`);
+  if (daLinha && tipo === 'acao') focar(`[data-chave="${montarChave(pid, 'acao', id, 'responsavel')}"]`);
+  else if (daLinha && tipo === 'melhoria') focar(`[data-novo="acao:${pid}:${id}"]`);
+  else focar(`[data-chave="${montarChave(pid, tipo, id, campoNome)}"]`);
   acompanhar(`criar ${tipo}`, promessa).catch((e) => erroGlobal(`Não foi possível adicionar. ${mensagemPorErro(e)}`));
 }
 
-function focoAposExcluir(tipo, pid, id) {
+function focoAposExcluir(tipo, pid, id, periodo) {
   const a = ativoPorId(pid);
   if (tipo === 'acao') {
     const m = a?.melhorias.find((x) => x.acoes.some((y) => y.id === id));
-    return m ? `[data-chave="acao:${pid}:${m.id}"]` : '#tit-lista';
+    return m ? `[data-novo="acao:${pid}:${m.id}"]` : '#tit-lista';
   }
-  if (tipo === 'melhoria') return `[data-chave="melhoria:${pid}"]`;
+  if (tipo === 'melhoria') return `[data-novo="melhoria:${pid}"]`;
   if (tipo === 'indicador') return `[data-chave="indicador:${pid}"]`;
-  if (tipo === 'medicao') return `#reg-${id.replace(/[^A-Za-z0-9_-]/g, '_')}-periodo`;
+  if (tipo === 'medicao') return `[data-k="medp-${id}-${periodo}"] input`;
   return '#tit-lista';
 }
 
@@ -312,9 +329,10 @@ function excluirItem(botao) {
   if (tipo === 'melhoria') rotulo = a.melhorias.find((x) => x.id === id)?.nome ?? 'melhoria';
   if (tipo === 'indicador') rotulo = a.indicadores.find((x) => x.id === id)?.nome ?? 'indicador';
   if (tipo === 'medicao') rotulo = `medição ${periodo}`;
+  if (tipo === 'medicao') estado.formsMedicao.delete(`${id}:${periodo}`);
   const alvo = { tipo, id, periodo: periodo || null };
   const lote = novoLote();
-  const foco = focoAposExcluir(tipo, pid, id);
+  const foco = focoAposExcluir(tipo, pid, id, periodo);
   estado.confirmacoes.delete(chaveConf);
   const promessa = estado.dados.excluir(pid, alvo, lote);
   empilharDesfazer({ processoId: pid, alvo, rotulo: rotulo || tipo, lote });
@@ -396,53 +414,65 @@ function indicadorAtivo(pid, indId) {
   return ativoPorId(pid)?.indicadores.find((i) => i.id === indId) ?? null;
 }
 
-function lerFormulario(fs) {
-  const v = (n) => fs.querySelector(`[data-medicao="${n}"]`)?.value ?? '';
-  const modo = fs.querySelector('[data-medicao="modo"]:checked')?.value ?? 'direto';
-  return { periodo: v('periodo'), modo, numerador: v('numerador'), denominador: v('denominador'), valor: v('valor') };
+const idDoCampoDeMedicao = (texto) => texto.replace(/[^A-Za-z0-9_-]/g, '_');
+
+/** Lê os campos da linha do período pendente. Em percentual, preencher numerador ou denominador escolhe o cálculo; senão vale o valor direto. */
+function lerLinhaDeMedicao(tr, ind) {
+  const v = (n) => tr.querySelector(`[data-medicao="${n}"]`)?.value ?? '';
+  const periodo = tr.dataset.periodo || v('periodo');
+  const numerador = v('numerador');
+  const denominador = v('denominador');
+  const valor = v('valor');
+  const calculado = ind.unidade === 'percentual' && (numerador.trim() !== '' || denominador.trim() !== '');
+  return { periodo, modo: calculado ? 'calculado' : 'direto', numerador, denominador, valor, misto: calculado && valor.trim() !== '' };
 }
 
-function atualizarFormularioDeMedicao(fs) {
-  const indId = fs.dataset.ind;
-  const pid = fs.dataset.pid;
-  const ind = indicadorAtivo(pid, indId);
+const chaveDaLinha = (tr) => `${tr.dataset.ind}:${tr.dataset.periodo || 'outro'}`;
+
+function atualizarLinhaDeMedicao(tr) {
+  const ind = indicadorAtivo(tr.dataset.pid, tr.dataset.ind);
   if (!ind) return;
-  const ant = estado.formsMedicao.get(indId) ?? {};
-  const f = lerFormulario(fs);
+  const f = lerLinhaDeMedicao(tr, ind);
   let previa = '';
   let avisos = [];
-  if (ind.unidade === 'percentual' && f.modo === 'calculado') {
+  if (f.modo === 'calculado') {
     const n = analisarNumero(f.numerador);
     const d = analisarNumero(f.denominador);
-    if (n.ok && d.ok && !n.vazio && !d.vazio && d.valor > 0) {
-      const v = calcularValor(n.valor, d.valor);
-      previa = `Valor calculado: ${formatarNumero(v)}%`;
-    }
+    if (n.ok && d.ok && !n.vazio && !d.vazio && d.valor > 0) previa = `Valor calculado: ${formatarNumero(calcularValor(n.valor, d.valor))}%`;
   }
-  const v = validarMedicao({ ...f, modo: ind.unidade === 'percentual' ? f.modo : 'direto' }, {
+  const v = validarMedicao(f, {
     frequencia: ind.frequencia, unidade: ind.unidade, hoje: hoje(), existentes: ind.medicoes.map((m) => m.periodo),
   });
   if (v.ok) avisos = v.avisos;
-  estado.formsMedicao.set(indId, { ...ant, periodo: f.periodo, modo: f.modo, previa, avisos, erros: ant.erros && ant.periodo === f.periodo ? ant.erros : null });
+  // guarda o texto (para avisar se outra pessoa registrar o período) e o período escolhido em "outro período"
+  estado.formsMedicao.set(chaveDaLinha(tr), {
+    previa, avisos, erros: null, escolhido: f.periodo,
+    rascunho: { numerador: f.numerador, denominador: f.denominador, valor: f.valor },
+  });
   atualizar();
 }
 
 function registrarMedicao(botao) {
+  const tr = botao.closest('tr[data-linha-med]');
   const { pid, id: indId } = botao.dataset;
   const ind = indicadorAtivo(pid, indId);
-  const fs = botao.closest('fieldset.registro');
-  if (!ind || !fs) return;
-  const f = lerFormulario(fs);
-  const modo = ind.unidade === 'percentual' ? f.modo : 'direto';
-  const v = validarMedicao({ ...f, modo }, {
+  if (!ind || !tr) return;
+  const f = lerLinhaDeMedicao(tr, ind);
+  const chaveEstado = chaveDaLinha(tr);
+  const ant = estado.formsMedicao.get(chaveEstado) ?? {};
+  const v = validarMedicao(f, {
     frequencia: ind.frequencia, unidade: ind.unidade, hoje: hoje(), existentes: ind.medicoes.map((m) => m.periodo),
   });
-  const ant = estado.formsMedicao.get(indId) ?? {};
-  if (!v.ok) {
-    estado.formsMedicao.set(indId, { ...ant, periodo: f.periodo, modo: f.modo, erros: v.erros, avisos: [], previa: ant.previa ?? '' });
+  const erros = { ...(v.ok ? {} : v.erros) };
+  // o período escolhido em "outro período" foi registrado por outra pessoa: a lista volta para "Escolha" e o registro é recusado
+  if (!f.periodo && ant.escolhido && ind.medicoes.some((m) => m.periodo === ant.escolhido)) erros.periodo = 'Já existe medição para este período. Edite a existente.';
+  if (f.misto) erros.valor = 'Preencha numerador e denominador ou só o valor direto, não os dois.';
+  if (Object.keys(erros).length) {
+    estado.formsMedicao.set(chaveEstado, { ...ant, erros, avisos: [] });
     atualizar();
-    const primeiro = ['periodo', 'numerador', 'denominador', 'valor'].find((n) => v.erros[n]);
-    if (primeiro) focar(`#reg-${indId.replace(/[^A-Za-z0-9_-]/g, '_')}-${primeiro}`);
+    const primeiro = ['periodo', 'numerador', 'denominador', 'valor'].find((n) => erros[n]);
+    const id = `reg-${idDoCampoDeMedicao(indId)}-${idDoCampoDeMedicao(tr.dataset.periodo || 'outro')}`;
+    if (primeiro) focar(`#${id}-${primeiro}`);
     return;
   }
   const doc = procPorId(pid);
@@ -450,16 +480,19 @@ function registrarMedicao(botao) {
   if (!existeExcluida) {
     const limite = podeAdicionar('medicoes', ocupacao(doc, 'medicoes', indId));
     if (!limite.ok) {
-      estado.formsMedicao.set(indId, { ...ant, erros: { periodo: limite.erro }, avisos: [] });
+      estado.formsMedicao.set(chaveEstado, { ...ant, erros: { periodo: limite.erro }, avisos: [] });
       atualizar();
       return;
     }
   }
   const rotulo = f.periodo;
   const promessa = estado.dados.criarItem(pid, { tipo: 'medicao', id: indId, periodo: f.periodo }, v.dados);
-  estado.formsMedicao.set(indId, { periodo: null, modo: f.modo, geracao: (ant.geracao ?? 0) + 1, previa: '', avisos: v.avisos, erros: null });
+  if (v.avisos.length) estado.formsMedicao.set(`${indId}:${f.periodo}`, { registrado: true, avisos: v.avisos });
+  else estado.formsMedicao.delete(`${indId}:${f.periodo}`);
+  if (chaveEstado !== `${indId}:${f.periodo}`) estado.formsMedicao.delete(chaveEstado);
+  if (!tr.dataset.periodo) for (const campoDaLinha of tr.querySelectorAll('input,select')) campoDaLinha.value = ''; // a linha "outro período" continua no lugar
   anunciar(`Medição de ${rotulo} registrada.${v.avisos.length ? ` Aviso: ${v.avisos[0]}` : ''}`);
-  focar(`#reg-${indId.replace(/[^A-Za-z0-9_-]/g, '_')}-periodo`);
+  focar(`[data-k="med-${indId}-${f.periodo}"] [data-acao="medicao-editar"]`);
   acompanhar('criar medição', promessa).catch((e) => erroGlobal(`Não foi possível registrar a medição. ${mensagemPorErro(e)}`));
 }
 
@@ -540,6 +573,15 @@ export function tratarClique(e) {
   const alvo = e.target.closest('[data-acao]');
   if (!alvo) return;
   const acao = alvo.dataset.acao;
+  // Um item do painel "Mais ..." fecha o painel; o foco de volta (diálogos) vai para o resumo do painel.
+  let origemDoPainel = alvo;
+  const painel = alvo.closest('.painel-mais');
+  if (painel) {
+    const sanf = painel.closest('details[data-sanfona]');
+    estado.sanfonas.set(sanf.dataset.sanfona, false);
+    origemDoPainel = sanf.querySelector('summary');
+    atualizar();
+  }
   if (acao === 'alternar') {
     if (e.target.closest('a')) return;
     if (alvo.tagName !== 'BUTTON' && e.target.closest('button')) return;
@@ -563,8 +605,8 @@ export function tratarClique(e) {
       break;
     case 'exportar-todos': exportarTodos(); break;
     case 'exportar-processo': exportarProcesso(alvo.dataset.id); break;
-    case 'importar-novos': escolherArquivo('novos', null, alvo); break;
-    case 'importar-processo': escolherArquivo('acrescimo', alvo.dataset.id, alvo); break;
+    case 'importar-novos': escolherArquivo('novos', null, origemDoPainel); break;
+    case 'importar-processo': escolherArquivo('acrescimo', alvo.dataset.id, origemDoPainel); break;
     case 'imprimir-agora': window.print(); break;
     case 'excluir-processo': pedirExclusaoDeProcesso(alvo.dataset.id, alvo); break;
     case 'confirmar-abrir':
@@ -578,6 +620,18 @@ export function tratarClique(e) {
       break;
     }
     case 'excluir-item': excluirItem(alvo); break;
+    case 'sanfona': {
+      e.preventDefault();
+      estado.sanfonas.set(alvo.dataset.chave, !alvo.closest('details').hasAttribute('open'));
+      atualizar();
+      break;
+    }
+    case 'filtrar': {
+      estado.filtro = alvo.dataset.filtro;
+      const n = filtrarPorEstado(filtrarPorBusca(listaAtiva())).length;
+      anunciar(estado.filtro === 'todos' ? 'Filtro removido. Mostrando todos os processos.' : `Mostrando ${n} processos com ${estado.filtro === 'atrasadas' ? 'ação atrasada' : 'ação travada'}.`);
+      break;
+    }
     case 'novo-abrir': abrirNovo(alvo.dataset.chave); break;
     case 'novo-cancelar': cancelarNovo(alvo.dataset.chave); break;
     case 'novo-confirmar': confirmarNovo(alvo); break;
@@ -618,14 +672,9 @@ export function tratarClique(e) {
     }
     case 'medicao-registrar': registrarMedicao(alvo); break;
     case 'medicao-editar': editarMedicao(alvo); break;
+    case 'dispensar-aviso-medicao': estado.formsMedicao.delete(alvo.dataset.chave); atualizar(); break;
     case 'medicao-salvar': salvarMedicao(alvo); break;
     case 'medicao-cancelar': estado.edicaoMedicao = null; atualizar(); break;
-    case 'preencher-periodo': {
-      const f = estado.formsMedicao.get(alvo.dataset.id) ?? {};
-      estado.formsMedicao.set(alvo.dataset.id, { ...f, periodo: alvo.dataset.periodo, erros: null });
-      focar(`#reg-${alvo.dataset.id.replace(/[^A-Za-z0-9_-]/g, '_')}-${(f.modo ?? 'calculado') === 'calculado' ? 'numerador' : 'valor'}`);
-      break;
-    }
     case 'ir-indicador': irParaIndicador(alvo.dataset.id); break;
     case 'desfazer': desfazer(alvo.dataset.id); break;
     case 'fechar-desfazer':
@@ -659,14 +708,19 @@ export function instalarEventos() {
     if (el.dataset?.chave && el.matches('input,textarea,select')) {
       el.dataset.localBase = textoArmazenado(procPorId(lerChave(el.dataset.chave).pid), el.dataset.chave);
     }
-    if (dentroDaLista(el) && !estado.ordemCongelada) estado.ordemCongelada = listaAtiva().map((p) => p.id);
+    if (dentroDaLista(el) && !estado.ordemCongelada) {
+      estado.visiveisCongelados = new Set(estado.filtro === 'todos' ? [] : filtrarPorBusca(listaAtiva()).filter((p) => processoTem(p, estado.filtro)).map((p) => p.id));
+      estado.ordemCongelada = listaAtiva().map((p) => p.id);
+    }
   });
 
   raiz.addEventListener('focusout', (e) => {
     const el = e.target;
     if (el.dataset?.chave && el.matches('input,textarea') && el.isConnected) confirmarCampoDoElemento(el);
+    if (el.dataset?.linhaNova && el.isConnected) criarNovo(el, el.dataset, true);
     if (!dentroDaLista(e.relatedTarget) && estado.ordemCongelada) {
       estado.ordemCongelada = null;
+      estado.visiveisCongelados = null;
       atualizar();
     }
   });
@@ -678,15 +732,15 @@ export function instalarEventos() {
       window.location.hash = `#/imprimir/${el.value}/${el.dataset.pid}`;
       focar(`input[name="conteudo-impressao"][value="${el.value}"]`);
     }
-    const fs = el.closest?.('fieldset.registro');
-    if (fs && el.dataset?.medicao) atualizarFormularioDeMedicao(fs);
+    const linhaMed = el.closest?.('tr[data-linha-med]');
+    if (linhaMed && el.dataset?.medicao === 'periodo') atualizarLinhaDeMedicao(linhaMed);
   });
 
   raiz.addEventListener('input', (e) => {
     const el = e.target;
     if (el.id === 'busca') { estado.busca = el.value; atualizar(); return; }
-    const fs = el.closest?.('fieldset.registro');
-    if (fs && el.dataset?.medicao && el.matches('input[type="text"]')) atualizarFormularioDeMedicao(fs);
+    const linhaMed = el.closest?.('tr[data-linha-med]');
+    if (linhaMed && el.dataset?.medicao && el.matches('input[type="text"]')) atualizarLinhaDeMedicao(linhaMed);
     if (el.dataset?.novo) {
       const f = estado.formsNovo.get(el.dataset.novo);
       if (f?.erro) { estado.formsNovo.set(el.dataset.novo, { erro: null }); atualizar(); }
@@ -705,6 +759,12 @@ export function instalarEventos() {
         e.stopPropagation();
         return;
       }
+      if (el.dataset?.linhaNova) {
+        el.value = '';
+        estado.formsNovo.delete(el.dataset.novo);
+        atualizar();
+        return;
+      }
       if (el.dataset?.novo) { cancelarNovo(el.dataset.novo); return; }
       if (el.id === 'novo-processo') { estado.formProcesso = null; focar('[data-acao="processo-novo-abrir"]'); return; }
       const conf = el.closest?.('[data-conf]');
@@ -715,6 +775,13 @@ export function instalarEventos() {
         return;
       }
       if (el.closest?.('tr.editando')) { estado.edicaoMedicao = null; atualizar(); return; }
+      const aberto = el.closest?.('details.mais[open]');
+      if (aberto) {
+        estado.sanfonas.set(aberto.dataset.sanfona, false);
+        atualizar();
+        focar(`summary[data-chave="${aberto.dataset.sanfona}"]`);
+        return;
+      }
       const menu = document.getElementById('btn-menu');
       if (menu && menu.getAttribute('aria-expanded') === 'true') {
         menu.click();
@@ -723,9 +790,12 @@ export function instalarEventos() {
       return;
     }
     if (e.key === 'Enter') {
-      if (el.dataset?.chave && el.matches('input[type="text"]')) {
+      if (el.dataset?.chave && el.matches('input[type="text"],textarea[data-linha-unica]')) {
         e.preventDefault();
         confirmarCampoDoElemento(el);
+      } else if (el.dataset?.linhaNova) {
+        e.preventDefault();
+        criarNovo(el, el.dataset, true);
       } else if (el.dataset?.novo) {
         e.preventDefault();
         document.querySelector(`[data-acao="novo-confirmar"][data-chave="${el.dataset.novo}"]`)?.click();
@@ -737,7 +807,7 @@ export function instalarEventos() {
         el.closest('tr').querySelector('[data-acao="medicao-salvar"]')?.click();
       } else if (el.dataset?.medicao && el.matches('input[type="text"]')) {
         e.preventDefault();
-        el.closest('fieldset').querySelector('[data-acao="medicao-registrar"]')?.click();
+        el.closest('tr').querySelector('[data-acao="medicao-registrar"]')?.click();
       }
     }
   });

@@ -1,8 +1,9 @@
 // Composição da interface: roteamento, desenho (reconciliação), recebimento dos dados e estados de tela.
 import { h, plural, idSeguro } from './dom.js';
 import {
-  estado, atualizar, definirDesenho, listaAtiva, filtrarPorBusca, hoje, procPorId, estaOffline, chaveAberto,
+  estado, atualizar, definirDesenho, listaAtiva, filtrarPorBusca, filtrarPorEstado, contarComAcao, hoje, procPorId, estaOffline, chaveAberto,
 } from './estado.js';
+import { sanfona } from './compartilhado.js';
 import { reconciliar } from './reconciliar.js';
 import { processosAtivos, excluidosRecentes, ativos } from '../dominio/lixeira.js';
 import { calcularRetrato } from '../dominio/metricas.js';
@@ -119,22 +120,50 @@ function formNovoProcesso() {
       h('button', { type: 'button', class: 'btn fant', 'data-acao': 'processo-novo-cancelar' }, 'Cancelar')));
 }
 
-function acoesDaTela(tela) {
+const TEXTO_FILTRO = { atrasadas: 'ação atrasada', travadas: 'ação travada' };
+
+/** Linha do título (redesign, 2.1): título + conexão à esquerda; Adicionar processo, Mais ações e Excluídos recentes à direita. */
+function linhaDoTitulo(tela, pronto) {
   const recentes = excluidosRecentes(estado.processos, Date.now()).length;
-  return h('div', { class: 'acoes-tela', 'data-k': 'acoes-tela' },
-    h('div', { class: 'linha-acoes' },
-      estado.formProcesso
-        ? null
-        : h('button', { type: 'button', class: 'btn prim', 'data-acao': 'processo-novo-abrir' }, 'Adicionar processo'),
-      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'expandir-todos' }, 'Expandir todos'),
-      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'recolher-todos' }, 'Recolher todos'),
-      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'exportar-todos' }, 'Exportar todos (JSON)'),
-      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'importar-novos' }, 'Importar JSON'),
-      h('div', { class: 'campo busca' },
-        h('label', { for: 'busca' }, 'Buscar processo'),
-        h('input', { id: 'busca', type: 'search', value: estado.busca, 'data-controlado': true, autocomplete: 'off' })),
-      h('button', { type: 'button', class: 'btn-link', 'data-acao': 'abrir-lixeira' }, `Excluídos recentes (${recentes})`)),
-    estado.formProcesso ? formNovoProcesso() : null);
+  return h('div', { class: 'cab-tela', 'data-k': `ct-${tela}` },
+    h('div', { class: 'titulo' }, h('h1', { id: 'h1-tela', tabindex: '-1' }, TITULOS[tela]), indicadorDeConexao()),
+    pronto
+      ? h('div', { class: 'acoes-tela', 'data-k': 'acoes-tela' },
+        estado.formProcesso
+          ? null
+          : h('button', { type: 'button', class: 'btn prim', 'data-acao': 'processo-novo-abrir' }, 'Adicionar processo'),
+        sanfona('mais-tela', 'mais', false, ['Mais ações'],
+          h('div', { class: 'painel-mais' },
+            h('button', { type: 'button', class: 'btn', 'data-acao': 'expandir-todos' }, 'Expandir todos'),
+            h('button', { type: 'button', class: 'btn', 'data-acao': 'recolher-todos' }, 'Recolher todos'),
+            h('button', { type: 'button', class: 'btn', 'data-acao': 'exportar-todos' }, 'Exportar todos (JSON)'),
+            h('button', { type: 'button', class: 'btn', 'data-acao': 'importar-novos' }, 'Importar JSON'))),
+        recentes ? h('button', { type: 'button', class: 'btn-link', 'data-acao': 'abrir-lixeira' }, `Excluídos recentes (${recentes})`) : null)
+      : null);
+}
+
+/** Busca e, no Plano, o filtro "Atrasadas / Travadas" (D1 do Gate B). Estado só em memória. */
+function barraDeBusca(tela, mostrados, total) {
+  const chip = (valor, rotulo) => h('button', {
+    type: 'button', class: 'chip', 'data-acao': 'filtrar', 'data-filtro': valor, 'aria-pressed': estado.filtro === valor ? 'true' : 'false',
+  }, rotulo);
+  const comFiltro = tela === 'plano' && estado.filtro !== 'todos';
+  return h('div', { class: 'barra-filtro', 'data-k': 'barra-filtro' },
+    h('div', { class: 'campo busca' },
+      h('label', { for: 'busca' }, 'Buscar processo'),
+      h('input', { id: 'busca', type: 'search', value: estado.busca, 'data-controlado': true, autocomplete: 'off' })),
+    tela === 'plano'
+      ? h('div', { class: 'filtro', role: 'group', 'aria-label': 'Filtrar processos' },
+        h('span', { class: 'rot-inline' }, 'Mostrar:'),
+        chip('todos', 'Todos'),
+        chip('atrasadas', `Atrasadas (${contarComAcao('atrasadas')})`),
+        chip('travadas', `Travadas (${contarComAcao('travadas')})`))
+      : null,
+    tela === 'plano'
+      ? h('p', { class: 'estado-filtro', role: 'status' },
+        comFiltro ? `Mostrando ${mostrados} de ${total} processos com ${TEXTO_FILTRO[estado.filtro]}.` : '',
+        comFiltro ? [' ', h('button', { type: 'button', class: 'btn-link', 'data-acao': 'filtrar', 'data-filtro': 'todos' }, 'Limpar filtro')] : null)
+      : null);
 }
 
 function avisoDeExclusaoRemota(id, info) {
@@ -149,16 +178,16 @@ function avisoDeExclusaoRemota(id, info) {
 
 function telaDeProcessos(tela) {
   const filhos = [];
-  filhos.push(h('div', { class: 'cabecalho-tela', 'data-k': `ct-${tela}` },
-    h('h1', { id: 'h1-tela', tabindex: '-1' }, TITULOS[tela]),
-    h('p', { class: 'frase-tela' }, FRASES[tela], ' ', indicadorDeConexao())));
   filhos.push(faixaDeTeste(), faixaDeConexao(), faixaDeErro());
-
   const pronto = !estado.carregando && !estado.erroLeitura;
-  if (pronto) filhos.push(acoesDaTela(tela));
+  filhos.push(linhaDoTitulo(tela, pronto));
+  if (pronto && estado.formProcesso) filhos.push(formNovoProcesso());
 
   const todos = processosAtivos(estado.processos);
-  const lista = filtrarPorBusca(listaAtiva());
+  const buscados = filtrarPorBusca(listaAtiva());
+  const lista = tela === 'plano' ? filtrarPorEstado(buscados) : buscados;
+  const comFiltro = tela === 'plano' && estado.filtro !== 'todos';
+  if (pronto) filhos.push(barraDeBusca(tela, lista.length, todos.length));
   if (estado.carregando) {
     filhos.push(h('section', { 'data-k': 'resumo-carregando' }, h('h2', { class: 'sr' }, 'Resumo'), h('p', { class: 'ajuda' }, 'Carregando…')));
   } else if (estado.erroLeitura) {
@@ -173,10 +202,14 @@ function telaDeProcessos(tela) {
   if (estado.carregando) corpoLista = [esqueletos()];
   else if (estado.erroLeitura) corpoLista = [];
   else if (!todos.length && !estado.avisosExclusao.size) corpoLista = [estadoVazio()];
-  else if (!lista.length && estado.busca) {
+  else if (!lista.length && (estado.busca || comFiltro)) {
     corpoLista = [h('div', { class: 'vazio', 'data-k': 'busca-vazia' },
-      h('p', null, `Nenhum processo encontrado para «${estado.busca}».`),
-      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'limpar-busca' }, 'Limpar busca'))];
+      comFiltro
+        ? h('p', null, `Nenhum processo com ${TEXTO_FILTRO[estado.filtro]}${estado.busca ? ` para a busca «${estado.busca}»` : ''}.`)
+        : h('p', null, `Nenhum processo encontrado para «${estado.busca}».`),
+      h('div', { class: 'botoes' },
+        comFiltro ? h('button', { type: 'button', class: 'btn fant', 'data-acao': 'filtrar', 'data-filtro': 'todos' }, 'Limpar filtro') : null,
+        estado.busca ? h('button', { type: 'button', class: 'btn fant', 'data-acao': 'limpar-busca' }, 'Limpar busca') : null))];
   } else {
     corpoLista = [
       ...[...estado.avisosExclusao.entries()].map(([id, info]) => avisoDeExclusaoRemota(id, info)),

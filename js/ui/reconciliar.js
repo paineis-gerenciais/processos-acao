@@ -63,6 +63,13 @@ function sincronizarNo(vivo, novo) {
 
 function sincronizarFilhos(vivo, novo) {
   const novos = [...novo.childNodes];
+  // Remove antes os elementos com chave que saíram da lista. Sem isso, a linha seguinte seria movida para o lugar da
+  // removida, e mover um elemento com foco o tira do campo em que a pessoa está digitando.
+  const chavesNovas = new Set(novos.map(chaveDe).filter(Boolean));
+  for (const f of [...vivo.childNodes]) {
+    const k = chaveDe(f);
+    if (k && !chavesNovas.has(k)) vivo.removeChild(f);
+  }
   const porChave = new Map();
   for (const f of vivo.childNodes) {
     const k = chaveDe(f);
