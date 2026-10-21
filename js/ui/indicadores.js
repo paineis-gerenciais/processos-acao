@@ -5,12 +5,15 @@ import {
   ROTULO_POLARIDADE, ROTULO_UNIDADE, POLARIDADES, UNIDADES, formatarValor, formatarNumero, situacaoMeta, variacaoContraBase,
   fraseResumo, serieDoIndicador, apuracao,
 } from '../dominio/calculos.js';
-import { FREQUENCIAS, rotuloPeriodo, periodosPermitidos, dataSaoPaulo, formatarDataBR, periodoDaData } from '../dominio/periodos.js';
+import { FREQUENCIAS, rotuloPeriodo, periodosPermitidos, dataSaoPaulo, formatarDataBR, periodoDaData, dataHoraBR } from '../dominio/periodos.js';
 import { avisosIndicador } from '../dominio/validacao.js';
 import { analiseIndicador } from '../dominio/metricas.js';
 import { seloSituacao, seloAtrasada, seloPendente, carimbo } from './selos.js';
 import { campo, montarChave, textoArmazenado } from './campos.js';
-import { cabecaDoCard, estaAberto, excluirNoLugar, novoItem, camposDoProcesso, docCru, botoesDoCard } from './compartilhado.js';
+import {
+  cabecaDoCard, estaAberto, excluirNoLugar, novoItem, camposDoProcesso, docCru, botoesDoCard, sanfona, totalDePendencias,
+  botaoExcluirLinha, linhaDeAvisoDeExclusao,
+} from './compartilhado.js';
 import { rodapeDoCard } from './plano.js';
 import { graficoDaSerie } from './grafico.js';
 
@@ -25,11 +28,9 @@ function compacto() {
   return window.matchMedia('(max-width: 859px)').matches;
 }
 
-function selosDosIndicadores(p) {
+/** Contagens do processo: situação da meta, pendências e apuração atrasada (a soma das pendências é o "n pendências"). */
+export function analiseDoProcesso(p) {
   const h0 = hoje();
-  const lista = [];
-  if (!p.indicadores.length) return [seloPendente('Sem indicador')];
-  lista.push(h('span', { class: 'selo s-nao' }, plural(p.indicadores.length, 'indicador', 'indicadores')));
   const c = { atingida: 0, nao_atingida: 0, semDado: 0, base: 0, meta: 0, freq: 0, pol: 0, med: 0, atraso: 0 };
   for (const i of p.indicadores) {
     const a = analiseIndicador(i, h0);
@@ -43,18 +44,40 @@ function selosDosIndicadores(p) {
     if (a.semMedicao) c.med += 1;
     if (a.apuracao.atrasada) c.atraso += 1;
   }
+  const itens = [];
+  if (c.base) itens.push({ n: c.base, texto: `${c.base} sem linha de base` });
+  if (c.meta) itens.push({ n: c.meta, texto: `${c.meta} sem meta` });
+  if (c.freq) itens.push({ n: c.freq, texto: `${c.freq} sem frequência` });
+  if (c.pol) itens.push({ n: c.pol, texto: `${c.pol} sem polaridade` });
+  if (c.med) itens.push({ n: c.med, texto: `${c.med} sem medição` });
+  return { c, itens, total: itens.reduce((t, x) => t + x.n, 0) };
+}
+
+function sinaisFechado(p, an) {
+  if (!p.indicadores.length) return [seloPendente('Sem indicador')];
+  const { c } = an;
+  const lista = [];
+  if (estado.novos.has(p.id)) lista.push(h('span', { class: 'selo s-and' }, 'Novo'));
+  lista.push(h('span', { class: 'selo s-nao' }, plural(p.indicadores.length, 'indicador', 'indicadores')));
   if (c.atingida) lista.push(seloSituacao('atingida', `Meta atingida ${c.atingida}`));
   if (c.nao_atingida) lista.push(seloSituacao('nao_atingida', `Meta não atingida ${c.nao_atingida}`));
   if (c.semDado) lista.push(seloSituacao('sem_dado', `Sem dado ${c.semDado}`));
-  if (c.base) lista.push(seloPendente(`${c.base} sem linha de base`));
-  if (c.meta) lista.push(seloPendente(`${c.meta} sem meta`));
-  if (c.freq) lista.push(seloPendente(`${c.freq} sem frequência`));
-  if (c.pol) lista.push(seloPendente(`${c.pol} sem polaridade`));
-  if (c.med) lista.push(seloPendente(`${c.med} sem medição`));
   if (c.atraso) lista.push(seloAtrasada(`${c.atraso} com apuração atrasada`));
+  lista.push(totalDePendencias(an.total));
   return lista;
 }
 
+const CAMPOS_OBRIGATORIOS = [
+  ['formula', 'Fórmula'], ['oQueMede', 'O que mede'], ['responsavel', 'Responsável pela medição'], ['fonte', 'Fonte'],
+  ['polaridade', 'Polaridade'], ['frequencia', 'Frequência'], ['unidade', 'Unidade'], ['linhaBase', 'Linha de base'],
+  ['linhaBaseReferencia', 'Referência da linha de base'], ['meta', 'Meta'],
+];
+
+function camposPendentes(i) {
+  return CAMPOS_OBRIGATORIOS.filter(([n]) => i[n] === null || i[n] === undefined || i[n] === '').map(([, rotulo]) => rotulo);
+}
+
+/** Ficha em <details>: aberta quando falta campo obrigatório, fechada quando completa; a pessoa pode alternar. */
 function fichaDoIndicador(pid, i) {
   const doc = docCru(pid);
   const ch = (n) => montarChave(pid, 'indicador', i.id, n);
@@ -62,144 +85,177 @@ function fichaDoIndicador(pid, i) {
   const trava = i.medicoes.length > 0;
   const unidade = i.unidade ? ROTULO_UNIDADE[i.unidade] : null;
   const pend = (n) => i[n] === null || i[n] === undefined || i[n] === '';
-  const L = { layout: 'linha' };
-  return h('div', { class: 'ficha ficha-tabela' },
-    campo({ ...L, chave: ch('nome'), rotulo: 'Nome do indicador', controle: 'texto', gravado: g('nome'), classe: 'largo' }),
-    campo({ ...L, chave: ch('formula'), rotulo: 'Fórmula', controle: 'area', gravado: g('formula'), pendente: pend('formula'), ajuda: 'Texto livre; o painel não calcula a fórmula.', classe: 'largo' }),
-    campo({ ...L, chave: ch('oQueMede'), rotulo: 'O que mede', controle: 'area', gravado: g('oQueMede'), pendente: pend('oQueMede'), classe: 'largo' }),
-    campo({ ...L, chave: ch('responsavel'), rotulo: 'Responsável pela medição', controle: 'texto', gravado: g('responsavel'), pendente: pend('responsavel'), ajuda: 'Nome ou função', dica: 'Nome ou função' }),
-    campo({ ...L, chave: ch('fonte'), rotulo: 'Fonte', controle: 'texto', gravado: g('fonte'), pendente: pend('fonte'), ajuda: 'De onde sai o dado', dica: 'De onde sai o dado' }),
-    campo({
-      ...L, chave: ch('polaridade'), rotulo: 'Polaridade', controle: 'lista', gravado: g('polaridade'), pendente: pend('polaridade'),
-      opcoesLista: POLARIDADES.map((v) => ({ valor: v, rotulo: ROTULO_POLARIDADE[v] })), ajuda: 'Maior é melhor ou menor é melhor?',
-    }),
-    campo({
-      ...L, chave: ch('frequencia'), rotulo: 'Frequência', controle: 'lista', gravado: g('frequencia'), pendente: pend('frequencia'),
-      opcoesLista: Object.keys(FREQUENCIAS).map((v) => ({ valor: v, rotulo: FREQUENCIAS[v].rotulo })),
-      ajuda: 'Mensal costuma bastar; trimestral é o limite.',
-      bloqueio: trava ? 'Não é possível mudar a frequência enquanto houver medições. Exclua as medições antes.' : null,
-    }),
-    campo({
-      ...L, chave: ch('unidade'), rotulo: 'Unidade', controle: 'lista', gravado: g('unidade'), pendente: pend('unidade'),
-      opcoesLista: UNIDADES.map((v) => ({ valor: v, rotulo: ROTULO_UNIDADE[v] })), ajuda: 'Em % o painel oferece numerador e denominador.',
-      bloqueio: trava ? 'Não é possível mudar a unidade enquanto houver medições. Exclua as medições antes.' : null,
-    }),
-    campo({ ...L, chave: ch('linhaBase'), rotulo: 'Linha de base', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('linhaBase'), pendente: pend('linhaBase'), ajuda: 'Valor de hoje. Sem ele não dá para saber se melhorou. Use vírgula: 62,5', dica: 'Ex.: 62,5' }),
-    campo({ ...L, chave: ch('linhaBaseReferencia'), rotulo: 'Referência da linha de base', controle: 'texto', inputmode: 'numeric', gravado: g('linhaBaseReferencia'), pendente: pend('linhaBaseReferencia'), ajuda: 'Último dia coberto pelo valor de hoje. Ex.: 31/12/2026', dica: 'dd/mm/aaaa' }),
-    campo({ ...L, chave: ch('meta'), rotulo: 'Meta', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('meta'), pendente: pend('meta'), ajuda: 'Valor que se quer alcançar. Use vírgula.', dica: 'Ex.: 80' }),
-    campo({ ...L, chave: ch('prazoMeta'), rotulo: 'Prazo da meta', opcional: true, controle: 'texto', inputmode: 'numeric', gravado: g('prazoMeta'), ajuda: 'Dia/mês/ano. Informativo.', dica: 'dd/mm/aaaa' }));
+  const L = { layout: 'ficha' };
+  const faltam = camposPendentes(i);
+  const motivo = (campoNome) => `Bloqueada: há ${plural(i.medicoes.length, 'medição', 'medições')}. Exclua as medições antes de mudar ${campoNome}.`;
+  return sanfona(`ficha:${i.id}`, 'ficha', faltam.length > 0,
+    ['Ficha do indicador', faltam.length
+      ? h('span', { class: 'pend-total' }, h('span', { class: 'i', 'aria-hidden': 'true' }, '▲'), ` ${plural(faltam.length, 'campo pendente', 'campos pendentes')}: ${faltam.join(', ')}`)
+      : h('span', { class: 'suave small' }, 'completa')],
+    h('div', { class: 'ficha-grade' },
+      campo({ ...L, chave: ch('formula'), rotulo: 'Fórmula', controle: 'area', gravado: g('formula'), pendente: pend('formula'), ajuda: 'Texto livre; o painel não calcula a fórmula.', classe: 'larga' }),
+      campo({ ...L, chave: ch('oQueMede'), rotulo: 'O que mede', controle: 'area', gravado: g('oQueMede'), pendente: pend('oQueMede'), classe: 'larga' }),
+      campo({ ...L, chave: ch('responsavel'), rotulo: 'Responsável pela medição', controle: 'texto', gravado: g('responsavel'), pendente: pend('responsavel'), ajuda: 'Nome ou função', dica: 'Nome ou função' }),
+      campo({ ...L, chave: ch('fonte'), rotulo: 'Fonte', controle: 'texto', gravado: g('fonte'), pendente: pend('fonte'), ajuda: 'De onde sai o dado', dica: 'De onde sai o dado' }),
+      campo({
+        ...L, chave: ch('polaridade'), rotulo: 'Polaridade', controle: 'lista', gravado: g('polaridade'), pendente: pend('polaridade'),
+        opcoesLista: POLARIDADES.map((v) => ({ valor: v, rotulo: ROTULO_POLARIDADE[v] })), ajuda: 'Maior é melhor ou menor é melhor?',
+      }),
+      campo({
+        ...L, chave: ch('frequencia'), rotulo: 'Frequência', controle: 'lista', gravado: g('frequencia'), pendente: pend('frequencia'),
+        opcoesLista: Object.keys(FREQUENCIAS).map((v) => ({ valor: v, rotulo: FREQUENCIAS[v].rotulo })),
+        ajuda: 'Mensal costuma bastar; trimestral é o limite.',
+        bloqueio: trava ? motivo('a frequência') : null,
+      }),
+      campo({
+        ...L, chave: ch('unidade'), rotulo: 'Unidade', controle: 'lista', gravado: g('unidade'), pendente: pend('unidade'),
+        opcoesLista: UNIDADES.map((v) => ({ valor: v, rotulo: ROTULO_UNIDADE[v] })), ajuda: 'Em % o painel oferece numerador e denominador.',
+        bloqueio: trava ? motivo('a unidade') : null,
+      }),
+      campo({ ...L, chave: ch('linhaBase'), rotulo: 'Linha de base', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('linhaBase'), pendente: pend('linhaBase'), ajuda: 'Valor de hoje. Sem ele não dá para saber se melhorou. Use vírgula: 62,5', dica: 'Ex.: 62,5' }),
+      campo({ ...L, chave: ch('linhaBaseReferencia'), rotulo: 'Referência da linha de base', controle: 'texto', inputmode: 'numeric', gravado: g('linhaBaseReferencia'), pendente: pend('linhaBaseReferencia'), ajuda: 'Último dia coberto pelo valor de hoje. Ex.: 31/12/2026', dica: 'dd/mm/aaaa' }),
+      campo({ ...L, chave: ch('meta'), rotulo: 'Meta', sufixo: unidade, controle: 'texto', inputmode: 'decimal', gravado: g('meta'), pendente: pend('meta'), ajuda: 'Valor que se quer alcançar. Use vírgula.', dica: 'Ex.: 80' }),
+      campo({ ...L, chave: ch('prazoMeta'), rotulo: 'Prazo da meta', opcional: true, controle: 'texto', inputmode: 'numeric', gravado: g('prazoMeta'), ajuda: 'Dia/mês/ano. Informativo.', dica: 'dd/mm/aaaa' })));
 }
 
 function celula(rotulo, ...filhos) {
   return h('td', { 'data-r': rotulo }, ...filhos);
 }
 
+const COLS_PERCENTUAL = 6;
+
+function textoNumero(n) {
+  return n === null || n === undefined ? '—' : formatarNumero(n);
+}
+
+/** Linha de um período sem medição: os campos já estão na linha e "Registrar" grava (D3 do Gate B). `periodo` null = "outro período". */
+function linhaPendente(pid, i, linha, percentual, outros) {
+  const periodo = linha ? linha.periodo : null;
+  const chaveEstado = `${i.id}:${periodo ?? 'outro'}`;
+  const guardado = estado.formsMedicao.get(chaveEstado);
+  const f = guardado && !guardado.registrado ? guardado : {};
+  const idb = `reg-${idSeguro(i.id)}-${idSeguro(periodo ?? 'outro')}`;
+  const rot = periodo ? rotuloPeriodo(i.frequencia, periodo) : 'outro período';
+  const erro = (n) => (f.erros?.[n] ? h('div', { class: 'estado erro', id: `${idb}-${n}-e`, role: 'alert' }, `✕ ${f.erros[n]}`) : null);
+  const inv = (n) => ({ 'aria-invalid': f.erros?.[n] ? 'true' : null, 'aria-describedby': f.erros?.[n] ? `${idb}-${n}-e` : null });
+  const entrada = (n, rotulo) => h('div', { class: 'campo' },
+    h('label', { for: `${idb}-${n}`, class: 'sr' }, rotulo),
+    h('input', { id: `${idb}-${n}`, type: 'text', inputmode: 'decimal', 'data-medicao': n, autocomplete: 'off', ...inv(n) }),
+    erro(n));
+  const primeira = periodo
+    ? celula('Período', h('span', { class: 'mono' }, rot), h('span', { class: 'sr' }, ` (${periodo})`),
+      h('div', { class: 'data-txt' }, linha.vencido ? 'Sem medição' : 'Em curso, sem medição'))
+    : celula('Período',
+      h('div', { class: 'campo' },
+        h('label', { for: `${idb}-periodo` }, 'Registrar outro período'),
+        h('select', { id: `${idb}-periodo`, 'data-medicao': 'periodo', ...inv('periodo') },
+          h('option', { value: '', 'data-k': 'op-vazio' }, 'Escolha'),
+          // data-k estável: a escolha acompanha o período, não a posição (outra pessoa pode mudar a lista)
+          ...outros.map((p) => h('option', { value: p, 'data-k': `op-${p}` }, `${rotuloPeriodo(i.frequencia, p)} (${p})`))),
+        erro('periodo')));
+  const valor = celula('Valor',
+    entrada('valor', percentual ? 'Valor direto' : 'Valor'),
+    h('p', { class: 'previa', role: 'status' }, f.previa ?? ''));
+  const linhaTr = h('tr', {
+    class: `linha-m sem-medicao${periodo ? '' : ' outro'}`, 'data-k': `medp-${i.id}-${periodo ?? 'outro'}`, 'data-linha-med': '1', 'data-pid': pid, 'data-ind': i.id, 'data-periodo': periodo ?? '',
+  },
+  primeira,
+  percentual ? celula('Numerador', entrada('numerador', 'Numerador')) : null,
+  percentual ? celula('Denominador', entrada('denominador', 'Denominador')) : null,
+  valor,
+  celula('Variação', '—'),
+  h('td', { class: 'c-fim', 'data-r': 'Ações' },
+    h('button', { type: 'button', class: 'btn prim', 'data-acao': 'medicao-registrar', 'data-pid': pid, 'data-id': i.id, 'data-periodo': periodo ?? '' }, 'Registrar', h('span', { class: 'sr' }, ` ${rot}`))));
+  const colunas = percentual ? COLS_PERCENTUAL : 4;
+  const avisos = (f.avisos ?? []).length
+    ? h('tr', { class: 'aviso-linha', 'data-k': `medav-${i.id}-${periodo ?? 'outro'}` },
+      h('td', { colspan: colunas }, ...f.avisos.map((a) => h('div', { class: 'aviso-campo alerta', role: 'status' }, h('p', null, a)))))
+    : null;
+  return [linhaTr, avisos];
+}
+
 function linhaDeMedicao(pid, i, linha, percentual) {
   const ed = estado.edicaoMedicao;
   const editando = ed && ed.indicadorId === i.id && ed.periodo === linha.periodo;
   const rot = rotuloPeriodo(i.frequencia, linha.periodo);
-  const colunaPeriodo = celula('Período', h('span', { class: 'mono' }, rot), h('span', { class: 'sr' }, ` (${linha.periodo})`));
-  if (!linha.medicao) {
-    return h('tr', { 'data-k': `med-${i.id}-${linha.periodo}`, class: 'sem-medicao' },
-      colunaPeriodo,
-      celula('Valor', linha.vencido ? 'Sem medição' : 'Em curso, sem medição'),
-      percentual ? celula('Numerador', '—') : null,
-      percentual ? celula('Denominador', '—') : null,
-      celula('Variação', '—'),
-      celula('Registrado em', '—'),
-      celula('Ações', h('button', { type: 'button', class: 'btn fant btn-pequeno', 'data-acao': 'preencher-periodo', 'data-id': i.id, 'data-periodo': linha.periodo }, 'Registrar', h('span', { class: 'sr' }, ` ${rot}`))));
-  }
   const m = linha.medicao;
+  const registrado = m.registradoEm ? formatarDataBR(dataSaoPaulo(m.registradoEm)) : '—';
+  const colunaPeriodo = celula('Período', h('span', { class: 'mono' }, rot), h('span', { class: 'sr' }, ` (${linha.periodo})`),
+    h('div', { class: 'data-txt' }, `registrado em ${registrado}`));
   if (editando) {
     const modo = ed.modo;
     const idb = `ed-${idSeguro(i.id)}-${idSeguro(linha.periodo)}`;
     const entrada = (nome, rotulo, valor) => h('div', { class: 'campo' },
-      h('label', { for: `${idb}-${nome}` }, rotulo),
+      h('label', { for: `${idb}-${nome}`, class: 'sr' }, rotulo),
       h('input', { id: `${idb}-${nome}`, type: 'text', inputmode: 'decimal', value: valor, 'data-edicao': nome, autocomplete: 'off', 'aria-invalid': ed.erros?.[nome] ? 'true' : null, 'aria-describedby': ed.erros?.[nome] ? `${idb}-${nome}-e` : null }),
       ed.erros?.[nome] ? h('div', { class: 'estado erro', id: `${idb}-${nome}-e`, role: 'alert' }, `✕ ${ed.erros[nome]}`) : null);
-    return h('tr', { 'data-k': `med-ed-${i.id}-${linha.periodo}`, class: 'editando' },
+    const calculado = modo === 'calculado';
+    return h('tr', { 'data-k': `med-ed-${i.id}-${linha.periodo}`, class: 'linha-m editando' },
       colunaPeriodo,
-      h('td', { 'data-r': 'Valor', colspan: percentual ? 3 : 1 },
-        modo === 'calculado'
-          ? h('div', { class: 'grade g2' }, entrada('numerador', 'Numerador', formatarNumero(m.numerador)), entrada('denominador', 'Denominador', formatarNumero(m.denominador)))
-          : entrada('valor', 'Valor', formatarNumero(m.valor))),
+      percentual ? celula('Numerador', calculado ? entrada('numerador', 'Numerador', formatarNumero(m.numerador)) : '—') : null,
+      percentual ? celula('Denominador', calculado ? entrada('denominador', 'Denominador', formatarNumero(m.denominador)) : '—') : null,
+      celula('Valor', calculado ? '—' : entrada('valor', 'Valor', formatarNumero(m.valor))),
       celula('Variação', '—'),
-      celula('Registrado em', '—'),
-      celula('Ações',
-        h('button', { type: 'button', class: 'btn prim btn-pequeno', 'data-acao': 'medicao-salvar', 'data-id': i.id, 'data-periodo': linha.periodo }, 'Salvar'),
-        h('button', { type: 'button', class: 'btn fant btn-pequeno', 'data-acao': 'medicao-cancelar' }, 'Cancelar')));
+      h('td', { class: 'c-fim', 'data-r': 'Ações' },
+        h('button', { type: 'button', class: 'btn prim', 'data-acao': 'medicao-salvar', 'data-id': i.id, 'data-periodo': linha.periodo }, 'Salvar'),
+        h('button', { type: 'button', class: 'btn fant', 'data-acao': 'medicao-cancelar' }, 'Cancelar')));
   }
   const v = variacaoContraBase(i, m);
-  const registrado = m.registradoEm ? formatarDataBR(dataSaoPaulo(m.registradoEm)) : '—';
   const conf = `medicao:${pid}:${i.id}:${linha.periodo}`;
-  return h('tr', { 'data-k': `med-${i.id}-${linha.periodo}` },
+  const atributos = { 'data-tipo': 'medicao', 'data-pid': pid, 'data-id': i.id, 'data-periodo': linha.periodo };
+  const tr = h('tr', { 'data-k': `med-${i.id}-${linha.periodo}`, class: 'linha-m' },
     colunaPeriodo,
-    celula('Valor', formatarValor(m.valor, i.unidade)),
-    percentual ? celula('Numerador', m.numerador === null || m.numerador === undefined ? '—' : formatarNumero(m.numerador)) : null,
-    percentual ? celula('Denominador', m.denominador === null || m.denominador === undefined ? '—' : formatarNumero(m.denominador)) : null,
+    percentual ? celula('Numerador', textoNumero(m.numerador)) : null,
+    percentual ? celula('Denominador', textoNumero(m.denominador)) : null,
+    celula('Valor', h('span', { class: 'v-forte' }, formatarValor(m.valor, i.unidade))),
     celula('Variação', v ? v.texto : '—'),
-    celula('Registrado em', registrado),
-    celula('Ações',
-      h('div', { class: 'acoes-linha' },
-        h('button', { type: 'button', class: 'btn fant btn-pequeno', 'data-acao': 'medicao-editar', 'data-pid': pid, 'data-id': i.id, 'data-periodo': linha.periodo }, 'Editar', h('span', { class: 'sr' }, ` ${rot}`)),
-        excluirNoLugar({
-          chaveConf: conf, rotuloBotao: 'Excluir', pergunta: `Excluir a medição de ${rot}?`,
-          atributos: { 'data-tipo': 'medicao', 'data-pid': pid, 'data-id': i.id, 'data-periodo': linha.periodo },
-        }))));
+    h('td', { class: 'c-fim', 'data-r': 'Ações' },
+      h('button', { type: 'button', class: 'btn fant', 'data-acao': 'medicao-editar', 'data-pid': pid, 'data-id': i.id, 'data-periodo': linha.periodo }, 'Editar', h('span', { class: 'sr' }, ` ${rot}`)),
+      botaoExcluirLinha({ chaveConf: conf, rotuloBotao: 'Excluir', rotuloAcessivel: `medição de ${rot}`, atributos })));
+  const aviso = linhaDeAvisoDeExclusao({ chaveConf: conf, pergunta: `Excluir a medição de ${rot}?`, colunas: percentual ? COLS_PERCENTUAL : 4, atributos });
+  // aviso que não bloqueia (ex.: valor acima de 100%), mantido junto da medição recém-registrada até a pessoa dispensar
+  const guardado = estado.formsMedicao.get(`${i.id}:${linha.periodo}`);
+  const rasc = guardado && !guardado.registrado ? guardado.rascunho : null;
+  const textoRascunho = rasc ? [['numerador', rasc.numerador], ['denominador', rasc.denominador], ['valor', rasc.valor]].filter(([, v]) => v && v.trim()).map(([n, v]) => `${n} «${v}»`).join(', ') : '';
+  const avisoDoRascunho = textoRascunho
+    ? h('tr', { class: 'aviso-linha', 'data-k': `medrasc-${i.id}-${linha.periodo}` },
+      h('td', { colspan: percentual ? COLS_PERCENTUAL : 4 },
+        h('div', { class: 'aviso-campo info', role: 'status' },
+          h('p', null, `Outra pessoa registrou ${rot} enquanto você digitava. O que você digitou não foi gravado: ${textoRascunho}. Use Editar para mudar a medição existente.`),
+          h('button', { type: 'button', class: 'btn fant', 'data-acao': 'dispensar-aviso-medicao', 'data-chave': `${i.id}:${linha.periodo}` }, 'Entendi'))))
+    : null;
+  const avisoDoRegistro = guardado?.registrado && guardado.avisos?.length
+    ? h('tr', { class: 'aviso-linha', 'data-k': `medav-${i.id}-${linha.periodo}` },
+      h('td', { colspan: percentual ? COLS_PERCENTUAL : 4 },
+        h('div', { class: 'aviso-campo alerta', role: 'status' }, ...guardado.avisos.map((a) => h('p', null, a)),
+          h('button', { type: 'button', class: 'btn fant', 'data-acao': 'dispensar-aviso-medicao', 'data-chave': `${i.id}:${linha.periodo}` }, 'Entendi'))))
+    : null;
+  return [tr, aviso, avisoDoRegistro, avisoDoRascunho];
+}
+
+/** Linhas do período: os esperados, os medidos e o período em curso (para o indicador novo ter onde registrar). */
+function linhasDoPeriodo(i, serie) {
+  if (!i.frequencia) return [];
+  const atual = periodoDaData(i.frequencia, hoje());
+  const lista = [...serie];
+  if (!lista.some((l) => l.periodo === atual)) lista.push({ periodo: atual, medicao: null, vencido: false, emCurso: true });
+  return lista.sort((a, b) => (a.periodo < b.periodo ? -1 : 1));
 }
 
 function tabelaDeMedicoes(pid, i, serie) {
-  const percentual = i.unidade === 'percentual';
-  if (!serie.length) return null;
-  const cab = ['Período', 'Valor', percentual ? 'Numerador' : null, percentual ? 'Denominador' : null, 'Variação contra a linha de base', 'Registrado em', 'Ações'].filter(Boolean);
-  return h('table', { class: 'tabela tabela-medicoes' },
-    h('caption', { class: 'sr' }, `Medições de ${i.nome}`),
-    h('thead', null, h('tr', null, ...cab.map((c) => h('th', { scope: 'col' }, c)))),
-    h('tbody', null, ...serie.map((l) => linhaDeMedicao(pid, i, l, percentual))));
-}
-
-function formularioDeMedicao(pid, i, serie) {
   if (!i.frequencia) return h('p', { class: 'ajuda' }, 'Escolha a frequência na ficha para registrar medições.');
-  const f = estado.formsMedicao.get(i.id) ?? {};
-  const h0 = hoje();
-  const medidos = new Set(i.medicoes.map((m) => m.periodo));
-  const permitidos = periodosPermitidos(i.frequencia, h0, 24);
-  const padrao = [...serie].reverse().find((l) => !l.medicao && l.vencido)?.periodo ?? periodoDaData(i.frequencia, h0);
-  const periodo = f.periodo && permitidos.includes(f.periodo) ? f.periodo : padrao;
   const percentual = i.unidade === 'percentual';
-  const modo = percentual ? (f.modo ?? 'calculado') : 'direto';
-  const idb = `reg-${idSeguro(i.id)}`;
-  const erro = (n) => (f.erros?.[n] ? h('div', { class: 'estado erro', id: `${idb}-${n}-e`, role: 'alert' }, `✕ ${f.erros[n]}`) : null);
-  const inv = (n) => ({ 'aria-invalid': f.erros?.[n] ? 'true' : null, 'aria-describedby': f.erros?.[n] ? `${idb}-${n}-e` : null });
-  const jaMedido = medidos.has(periodo);
-  const campoNum = (n, rotulo, ajuda) => h('div', { class: 'campo' },
-    h('label', { for: `${idb}-${n}` }, rotulo),
-    h('input', { id: `${idb}-${n}`, type: 'text', inputmode: 'decimal', 'data-medicao': n, autocomplete: 'off', ...inv(n) }),
-    ajuda ? h('div', { class: 'ajuda' }, ajuda) : null,
-    erro(n));
-  return h('fieldset', { class: 'registro', 'data-k': `reg-${i.id}-${f.geracao ?? 0}`, 'data-ind': i.id, 'data-pid': pid },
-    h('legend', null, 'Registrar medição'),
-    h('div', { class: 'campo' },
-      h('label', { for: `${idb}-periodo` }, 'Período'),
-      h('select', { id: `${idb}-periodo`, 'data-medicao': 'periodo', 'data-controlado': true, ...inv('periodo') },
-        ...permitidos.map((p) => h('option', { value: p, selected: p === periodo }, `${rotuloPeriodo(i.frequencia, p)} (${p})${medidos.has(p) ? ' (já medido)' : ''}`))),
-      erro('periodo')),
-    jaMedido
-      ? h('div', { class: 'aviso-campo info' }, h('p', null, 'Já existe medição para este período. Edite a existente.'),
-        h('button', { type: 'button', class: 'btn fant', 'data-acao': 'medicao-editar', 'data-pid': pid, 'data-id': i.id, 'data-periodo': periodo }, 'Editar a existente'))
-      : null,
-    percentual
-      ? h('div', { class: 'campo', role: 'radiogroup', 'aria-labelledby': `${idb}-modo` },
-        h('span', { class: 'rot', id: `${idb}-modo` }, 'Como informar'),
-        h('label', { class: 'radio' }, h('input', { type: 'radio', name: `${idb}-modo`, value: 'calculado', 'data-medicao': 'modo', 'data-controlado': true, checked: modo === 'calculado' }), ' Numerador e denominador'),
-        h('label', { class: 'radio' }, h('input', { type: 'radio', name: `${idb}-modo`, value: 'direto', 'data-medicao': 'modo', 'data-controlado': true, checked: modo === 'direto' }), ' Valor direto'))
-      : null,
-    modo === 'calculado'
-      ? h('div', { class: 'grade g2' }, campoNum('numerador', 'Numerador', 'Resultado = numerador ÷ denominador × 100'), campoNum('denominador', 'Denominador', 'Maior que zero'))
-      : campoNum('valor', 'Valor', percentual ? 'Digite com vírgula, ex.: 12,5. Para percentual, 82,5 (e não 0,825).' : 'Digite com vírgula, ex.: 12,5.'),
-    h('p', { class: 'previa', role: 'status' }, f.previa ?? ''),
-    ...(f.avisos ?? []).map((a) => h('div', { class: 'aviso-campo alerta' }, h('p', null, a))),
-    h('button', { type: 'button', class: 'btn prim', 'data-acao': 'medicao-registrar', 'data-pid': pid, 'data-id': i.id }, 'Registrar medição'));
+  const linhas = linhasDoPeriodo(i, serie);
+  const usados = new Set(linhas.map((l) => l.periodo));
+  const outros = periodosPermitidos(i.frequencia, hoje(), 24).filter((p) => !usados.has(p));
+  const cab = [['Período', 'per'], percentual ? ['Numerador', 'n'] : null, percentual ? ['Denominador', 'n'] : null, [percentual ? 'Valor (%)' : 'Valor', 'val'], ['Variação contra a linha de base', 'var'], ['Ações', 'acoes']].filter(Boolean);
+  return h('table', { class: 'grade-t tabela-medicoes' },
+    h('caption', { class: 'sr' }, `Medições de ${i.nome}`),
+    h('colgroup', null, ...cab.map(([, c]) => h('col', { class: `col-${c}` }))),
+    h('thead', null, h('tr', null, ...cab.map(([c]) => h('th', { scope: 'col' }, c)))),
+    h('tbody', null,
+      ...linhas.flatMap((l) => (l.medicao ? linhaDeMedicao(pid, i, l, percentual) : linhaPendente(pid, i, l, percentual, outros))),
+      outros.length ? linhaPendente(pid, i, null, percentual, outros) : null));
 }
 
 function blocoIndicador(pid, i) {
@@ -210,19 +266,19 @@ function blocoIndicador(pid, i) {
   const idResumo = `frase-${idSeguro(i.id)}`;
   const avisos = avisosIndicador(i);
   const idH = `ih-${idSeguro(i.id)}`;
-  return h('section', { class: 'indicador', id: `ind-${idSeguro(i.id)}`, 'data-k': `ind-${i.id}` },
-    h('h4', { id: idH, tabindex: '-1' }, 'Indicador'),
+  return h('section', { class: 'indicador', id: `ind-${idSeguro(i.id)}`, 'data-k': `ind-${i.id}`, 'aria-labelledby': idH },
+    h('h4', { id: idH, tabindex: '-1', class: 'sr' }, `Indicador: ${i.nome}`),
+    h('div', { class: 'ind-cab' },
+      campo({ chave: montarChave(pid, 'indicador', i.id, 'nome'), rotulo: 'Nome do indicador', controle: 'texto', layout: 'ficha', gravado: textoArmazenado(docCru(pid), montarChave(pid, 'indicador', i.id, 'nome')) })),
     h('div', { class: 'situacao' },
       seloSituacao(sit.codigo, sit.texto),
       h('p', { id: idResumo, class: 'frase' }, fraseResumo(i, i.medicoes)),
       sit.exibeSituacao ? null : h('p', { class: 'ajuda' }, AJUDA_SITUACAO[sit.codigo]),
       ap.atrasada ? seloAtrasada(`Apuração atrasada: período ${rotuloPeriodo(i.frequencia, ap.periodo)} sem medição (${plural(ap.dias, 'dia', 'dias')})`) : null,
       ...avisos.map((a) => h('div', { class: 'aviso-campo alerta' }, h('p', null, a)))),
-    h('div', { class: 'duas' },
-      fichaDoIndicador(pid, i),
-      h('div', { class: 'resultado' }, graficoDaSerie(i, serie, idResumo, compacto()))),
     tabelaDeMedicoes(pid, i, serie),
-    formularioDeMedicao(pid, i, serie),
+    h('div', { class: 'resultado' }, graficoDaSerie(i, serie, idResumo, compacto())),
+    fichaDoIndicador(pid, i),
     h('div', { class: 'fim' }, excluirNoLugar({
       chaveConf: `indicador:${pid}:${i.id}`, rotuloBotao: 'Excluir indicador',
       pergunta: i.medicoes.length ? `Excluir o indicador e ${plural(i.medicoes.length, 'medição', 'medições')}?` : 'Excluir este indicador?',
@@ -230,21 +286,30 @@ function blocoIndicador(pid, i) {
     })));
 }
 
+function linhaDeResumo(p, an) {
+  const { c } = an;
+  return h('p', { class: 'small suave resumo-card' },
+    `${plural(p.indicadores.length, 'indicador', 'indicadores')}. Meta atingida ${c.atingida} · Meta não atingida ${c.nao_atingida} · Sem dado ${c.semDado}. `,
+    an.itens.length ? `Pendências: ${an.itens.map((x) => x.texto).join(', ')}. ` : '',
+    dataHoraBR(p.indicadoresAtualizadoEm) ? `Alterado em ${dataHoraBR(p.indicadoresAtualizadoEm)}.` : 'Indicadores nunca alterados.');
+}
+
 export function cardIndicadores(p) {
   const aberto = estaAberto('indicadores', p.id);
   const idCorpo = `corpo-indicadores-${idSeguro(p.id)}`;
+  const an = analiseDoProcesso(p);
   const cabeca = cabecaDoCard('indicadores', p, aberto, {
     topo: [],
-    selos: h('div', { class: 'linha-selos' },
-      estado.novos.has(p.id) ? h('span', { class: 'selo s-and' }, 'Novo') : null,
-      ...selosDosIndicadores(p),
+    sinais: sinaisFechado(p, an),
+    meta: [
       carimbo('Indicadores alterados', p.indicadoresAtualizadoEm, 'Indicadores nunca alterados'),
-      h('a', { href: `#/plano/${p.id}`, class: 'link-card' }, 'Plano', h('span', { class: 'sr' }, ` de ${p.nome}`))),
+      h('a', { href: `#/plano/${p.id}`, class: 'link-card' }, 'Plano', h('span', { class: 'sr' }, ` de ${p.nome}`))],
   });
   let corpo = null;
   if (aberto) {
     corpo = h('div', { class: 'card-conteudo' },
-      h('div', { class: 'ficha-tabela' }, ...camposDoProcesso(p, { comEquipe: false })),
+      h('div', { class: 'ficha-proc' }, ...camposDoProcesso(p, { comEquipe: false })),
+      linhaDeResumo(p, an),
       botoesDoCard('indicadores', p),
       p.indicadores.length >= 2
         ? h('nav', { 'aria-label': `Indicadores de ${p.nome}`, class: 'saltos' },

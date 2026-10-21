@@ -2,6 +2,7 @@
 import { ativos, processosAtivos } from '../dominio/lixeira.js';
 import { normalizarNome } from '../dominio/validacao.js';
 import { dataSaoPaulo } from '../dominio/periodos.js';
+import { acaoAtrasada } from '../dominio/calculos.js';
 
 export const estado = {
   dados: null,                 // camada de dados injetada por main.js
@@ -19,12 +20,15 @@ export const estado = {
   resultadoReconexao: null,    // null | { tipo: 'ok' | 'erro', quantidade }
   abertos: new Set(),          // `${tela}:${id}`
   busca: '',
+  filtro: 'todos',             // 'todos' | 'atrasadas' | 'travadas' (só em memória, sem nome de pessoa)
+  sanfonas: new Map(),         // chave de <details> -> aberto (true/false); ausente = padrão da tela
+  visiveisCongelados: null,    // ids que passavam no filtro quando a edição começou (mantidos até o foco sair da lista)
   campos: new Map(),           // chave do campo -> estado do campo
   pendencias: new Map(),       // id da gravação -> chave do campo ou rótulo
   confirmacoes: new Set(),     // confirmações no lugar abertas
   formProcesso: null,          // null | { erro }
   formsNovo: new Map(),        // chave do grupo -> { erro }
-  formsMedicao: new Map(),     // indicadorId -> { periodo, modo, erros, previa, geracao, avisos, aviso... }
+  formsMedicao: new Map(),     // `${indicadorId}:${periodo}` -> { previa, erros, avisos } (linha do período pendente)
   edicaoMedicao: null,         // { processoId, indicadorId, periodo, modo, erros }
   desfazer: [],                // barras de desfazer: { id, processoId, alvo, rotulo, ate }
   avisosExclusao: new Map(),   // processoId -> { nome } excluídos por outra pessoa
@@ -91,6 +95,22 @@ export function filtrarPorBusca(lista) {
   const q = normalizarNome(estado.busca);
   if (!q) return lista;
   return lista.filter((p) => normalizarNome(p.nome).includes(q));
+}
+
+/** Ação atrasada ou travada? Usado pelo filtro "Atrasadas / Travadas" e pelos números dele. */
+export function processoTem(p, tipo) {
+  const h0 = hoje();
+  return p.acoes.some((a) => (tipo === 'atrasadas' ? acaoAtrasada(a, h0).atrasada : a.status === 'travada'));
+}
+
+export function contarComAcao(tipo) {
+  return processosAtivos(estado.processos).filter((p) => processoTem(p, tipo)).length;
+}
+
+/** Aplica o filtro. Enquanto há edição na lista, um cartão que já estava visível permanece (ordem congelada). */
+export function filtrarPorEstado(lista) {
+  if (estado.filtro === 'todos') return lista;
+  return lista.filter((p) => processoTem(p, estado.filtro) || (estado.ordemCongelada && estado.visiveisCongelados?.has(p.id)));
 }
 
 /** Nomes dos outros processos ativos (para a regra de unicidade). */

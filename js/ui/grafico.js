@@ -26,7 +26,7 @@ function sufixoEixo(unidade) {
 export function graficoDaSerie(ind, serie, idResumo, compacto) {
   if (!ind.frequencia) return h('p', { class: 'vazio-grafico' }, 'Escolha a frequência na ficha para registrar medições.');
   const medidas = serie.filter((l) => l.medicao);
-  if (!medidas.length) return h('p', { class: 'vazio-grafico' }, 'Nenhuma medição registrada. Registre a primeira abaixo.');
+  if (!medidas.length) return h('p', { class: 'vazio-grafico' }, 'Nenhuma medição registrada.');
 
   const linhas = serie.slice(-MAX_PERIODOS);
   const truncado = serie.length > MAX_PERIODOS;
